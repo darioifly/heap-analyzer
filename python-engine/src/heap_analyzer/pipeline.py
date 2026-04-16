@@ -24,7 +24,7 @@ class ProcessingPipeline:
         self.config = config or ProcessingConfig()
         logger.debug("Pipeline initialized with config: %s", self.config.model_dump())
 
-    def run(self, las_path: Path, tiff_path: Path, output_dir: Path) -> dict:
+    def run(self, las_path: Path, tiff_path: Path, output_dir: Path) -> dict[str, object]:
         """Run the full processing pipeline.
 
         Args:

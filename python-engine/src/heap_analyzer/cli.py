@@ -6,6 +6,7 @@ CRITICAL: stdout is ONLY JSON Lines. All debug/log output goes to stderr.
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -34,7 +35,7 @@ def process(las: str, tiff: str, output: str, config: str | None) -> None:
     print(f"[heap-analyzer] process called: las={las} tiff={tiff} output={output}", file=sys.stderr)
 
     # Parse config overrides if provided
-    cfg_dict: dict = {}
+    cfg_dict: dict[str, Any] = {}
     if config:
         try:
             cfg_dict = json.loads(config)

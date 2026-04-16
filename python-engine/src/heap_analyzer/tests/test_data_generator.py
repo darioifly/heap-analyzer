@@ -4,13 +4,14 @@ import json
 import math
 import shutil
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
 
 @pytest.fixture(scope="module")
-def test_site_dir():
+def test_site_dir() -> Generator[Path, None, None]:
     """Generate a test site once and return the directory path."""
     tmp = tempfile.mkdtemp(prefix="heap-analyzer-test-")
     try:

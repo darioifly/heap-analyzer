@@ -12,7 +12,7 @@ _SCRIPT = shutil.which("heap-analyzer")
 CLI_BASE = [_SCRIPT] if _SCRIPT else [PYTHON, "-m", "heap_analyzer.cli"]
 
 
-def run_cli(*args: str) -> subprocess.CompletedProcess:
+def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     """Run the CLI with given args and return the result."""
     return subprocess.run(
         [*CLI_BASE, *args],
@@ -24,7 +24,7 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
     )
 
 
-def parse_stdout_lines(stdout: str) -> list[dict]:
+def parse_stdout_lines(stdout: str) -> list[dict[str, object]]:
     """Parse stdout as JSON Lines, returning list of parsed objects."""
     lines = [l.strip() for l in stdout.splitlines() if l.strip()]
     return [json.loads(line) for line in lines]
@@ -114,4 +114,11 @@ class TestCliJsonProtocol:
         lines = parse_stdout_lines(result.stdout)
         result_lines = [o for o in lines if o.get("type") == "result"]
         assert result_lines, "No result message"
-        assert result_lines[-1]["data"]["metadata"]["config"]["dsm_resolution"] == 0.05
+        last = result_lines[-1]
+        data = last["data"]
+        assert isinstance(data, dict)
+        meta = data["metadata"]
+        assert isinstance(meta, dict)
+        config = meta["config"]
+        assert isinstance(config, dict)
+        assert config["dsm_resolution"] == 0.05

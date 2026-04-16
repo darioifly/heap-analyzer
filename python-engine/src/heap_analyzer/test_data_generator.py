@@ -414,7 +414,7 @@ def create_test_site(output_dir: Path) -> dict[str, object]:
     logger.info(
         "Dataset generato: %d punti, %d heap, CRS=%s",
         total_points,
-        len(ground_truth["heaps"]),
+        len(ground_truth["heaps"]),  # type: ignore[arg-type]
         CRS_WKT,
     )
     print(f"Totale punti: {total_points}", file=sys.stderr)
