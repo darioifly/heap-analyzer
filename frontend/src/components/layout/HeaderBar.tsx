@@ -2,6 +2,7 @@ import { Boxes, Moon, Sun, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/uiStore";
 import { useProjectStore } from "@/stores/projectStore";
+import { ExportButton } from "@/components/export/ExportButton";
 
 export function HeaderBar() {
   const toggleTheme = useUiStore((s) => s.toggleTheme);
@@ -31,6 +32,7 @@ export function HeaderBar() {
 
       {/* Right controls */}
       <div className="flex items-center gap-2 flex-1 justify-end">
+        <ExportButton />
         <Button
           variant="ghost"
           size="icon"
