@@ -138,6 +138,38 @@ def generate_test_data(output: str) -> None:
         sys.exit(1)
 
 
+@main.command("create-tiles")
+@click.option("--tiff", required=True, help="Path to input GeoTIFF ortophoto")
+@click.option("--output", required=True, help="Output directory for tiles")
+@click.option("--max-zoom", default=None, type=int, help="Maximum zoom level (auto-computed if omitted)")
+def create_tiles(tiff: str, output: str, max_zoom: int | None) -> None:
+    """Generate XYZ tile pyramid from a GeoTIFF in source CRS."""
+    print(f"[heap-analyzer] create-tiles called: tiff={tiff} output={output}", file=sys.stderr)
+
+    try:
+        from heap_analyzer.export.tile_generator import generate_tiles
+
+        def on_progress(pct: int, msg: str) -> None:
+            emit_progress("generating_tiles", float(pct), msg)
+
+        result = generate_tiles(
+            Path(tiff), Path(output),
+            max_zoom=max_zoom,
+            progress_callback=on_progress,
+        )
+        emit_result({
+            "tiles_dir": result.tiles_dir,
+            "metadata": result.model_dump(),
+        })
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("TILE_ERROR", f"Errore generazione tile: {exc}")
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
 @main.command("export-csv")
 @click.option("--results", required=True, help="Path to results.json from pipeline")
 @click.option("--output", required=True, help="Output CSV file path")

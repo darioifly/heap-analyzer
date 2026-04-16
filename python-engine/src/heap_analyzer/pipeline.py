@@ -209,7 +209,7 @@ class ProcessingPipeline:
         _progress(75, "Fase 5: Calcolo metriche volumetriche...")
 
         def vol_progress(pct: int, msg: str) -> None:
-            _progress(75 + int(pct * 0.25), f"Volume: {msg}")
+            _progress(75 + int(pct * 0.15), f"Volume: {msg}")
 
         metrics: list[HeapMetrics] = compute_heap_metrics(
             ndsm_path,
@@ -219,6 +219,23 @@ class ProcessingPipeline:
             self.config,
             progress_callback=vol_progress,
         )
+
+        # --- Phase 6: Generate tiles (90-100%) ---
+        _progress(90, "Fase 6: Generazione tile ortofoto...")
+        tiles_dir = output_dir / "tiles"
+
+        try:
+            from heap_analyzer.export.tile_generator import generate_tiles
+
+            def tile_progress(pct: int, msg: str) -> None:
+                _progress(90 + int(pct * 0.10), f"Tile: {msg}")
+
+            tile_result = generate_tiles(
+                tiff_path, tiles_dir, progress_callback=tile_progress,
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Generazione tile fallita: {exc}")
+            tile_result = None
 
         elapsed = time.time() - t0
 
@@ -231,6 +248,9 @@ class ProcessingPipeline:
             "ndsm": str(ndsm_path),
             "label_map": str(seg_result.label_map_path),
         }
+        if tile_result is not None:
+            intermediate_files["tiles"] = str(tiles_dir)
+            intermediate_files["tiles_metadata"] = str(tiles_dir / "metadata.json")
 
         survey_metadata: dict[str, Any] = {
             "las_path": str(las_path),

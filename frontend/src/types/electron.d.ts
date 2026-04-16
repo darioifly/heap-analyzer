@@ -48,7 +48,7 @@ declare global {
       shell: {
         showItemInFolder: (fullPath: string) => Promise<void>;
       };
-      tiles?: {
+      tiles: {
         getBaseUrl: () => Promise<string>;
         getMetadata: (surveyId: number) => Promise<{
           crs: string;

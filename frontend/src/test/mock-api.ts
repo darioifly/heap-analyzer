@@ -41,6 +41,10 @@ export function setupMockApi(overrides?: {
     shell: {
       showItemInFolder: vi.fn().mockResolvedValue(undefined),
     },
+    tiles: {
+      getBaseUrl: vi.fn().mockResolvedValue("http://127.0.0.1:3001"),
+      getMetadata: vi.fn().mockResolvedValue(null),
+    },
     dialog: {
       openFile: vi.fn().mockResolvedValue(null),
       saveFile: vi.fn().mockResolvedValue(null),

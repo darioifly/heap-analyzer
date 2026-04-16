@@ -91,6 +91,15 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('shell:showItemInFolder', fullPath),
   },
 
+  tiles: {
+    /** Get the base URL of the tile server. */
+    getBaseUrl: (): Promise<string> => ipcRenderer.invoke('tiles:getBaseUrl'),
+
+    /** Get tile metadata for a survey. Returns null if not available. */
+    getMetadata: (surveyId: number): Promise<Record<string, unknown> | null> =>
+      ipcRenderer.invoke('tiles:getMetadata', surveyId),
+  },
+
   dialog: {
     /** Open native file picker dialog. Returns selected file path or null if canceled. */
     openFile: (options: {
