@@ -14,6 +14,8 @@ function toDbRow(data: Partial<Omit<Survey, "id" | "createdAt" | "updatedAt">>):
   if (data.dtmPath !== undefined) row.dtm_path = data.dtmPath;
   if (data.ndsmPath !== undefined) row.ndsm_path = data.ndsmPath;
   if (data.labelMapPath !== undefined) row.label_map_path = data.labelMapPath;
+  if (data.tilesPath !== undefined) row.tiles_path = data.tilesPath;
+  if (data.ndsmHeatmapPath !== undefined) row.ndsm_heatmap_path = data.ndsmHeatmapPath;
   return row;
 }
 
@@ -33,6 +35,8 @@ function fromDbRow(row: Record<string, unknown>): Survey {
     dtmPath: (row.dtm_path as string) ?? null,
     ndsmPath: (row.ndsm_path as string) ?? null,
     labelMapPath: (row.label_map_path as string) ?? null,
+    tilesPath: (row.tiles_path as string) ?? null,
+    ndsmHeatmapPath: (row.ndsm_heatmap_path as string) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -45,7 +49,7 @@ interface SurveyStore {
   error: string | null;
 
   loadByProject: (projectId: number) => Promise<void>;
-  create: (data: Omit<Survey, "id" | "createdAt" | "updatedAt" | "processingStatus" | "dsmPath" | "dtmPath" | "ndsmPath" | "labelMapPath">) => Promise<Survey>;
+  create: (data: Omit<Survey, "id" | "createdAt" | "updatedAt" | "processingStatus" | "dsmPath" | "dtmPath" | "ndsmPath" | "labelMapPath" | "tilesPath" | "ndsmHeatmapPath">) => Promise<Survey>;
   update: (id: number, data: Partial<Omit<Survey, "id" | "createdAt" | "updatedAt">>) => Promise<Survey>;
   delete: (id: number) => Promise<void>;
   select: (id: number | null) => void;
@@ -79,6 +83,8 @@ export const useSurveyStore = create<SurveyStore>((set) => ({
         dtm_path: null,
         ndsm_path: null,
         label_map_path: null,
+        tiles_path: null,
+        ndsm_heatmap_path: null,
       };
       const row = await window.api.db.createSurvey(dbData);
       const survey = fromDbRow(row);

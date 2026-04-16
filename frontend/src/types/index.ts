@@ -28,6 +28,8 @@ export interface Survey {
   dtmPath: string | null;
   ndsmPath: string | null;
   labelMapPath: string | null;
+  tilesPath: string | null;
+  ndsmHeatmapPath: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -228,7 +228,7 @@ class ProcessingPipeline:
             from heap_analyzer.export.tile_generator import generate_tiles
 
             def tile_progress(pct: int, msg: str) -> None:
-                _progress(90 + int(pct * 0.10), f"Tile: {msg}")
+                _progress(90 + int(pct * 0.08), f"Tile: {msg}")
 
             tile_result = generate_tiles(
                 tiff_path, tiles_dir, progress_callback=tile_progress,
@@ -236,6 +236,20 @@ class ProcessingPipeline:
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"Generazione tile fallita: {exc}")
             tile_result = None
+
+        # Generate nDSM heatmap
+        ndsm_heatmap_path = output_dir / "ndsm_heatmap.png"
+        try:
+            from heap_analyzer.export.heatmap_generator import generate_ndsm_heatmap
+
+            _progress(98, "Generazione mappa altezze...")
+            generate_ndsm_heatmap(
+                ndsm_path, ndsm_heatmap_path,
+                height_threshold=self.config.height_threshold,
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Generazione heatmap fallita: {exc}")
+            ndsm_heatmap_path = None
 
         elapsed = time.time() - t0
 
@@ -251,6 +265,8 @@ class ProcessingPipeline:
         if tile_result is not None:
             intermediate_files["tiles"] = str(tiles_dir)
             intermediate_files["tiles_metadata"] = str(tiles_dir / "metadata.json")
+        if ndsm_heatmap_path is not None:
+            intermediate_files["ndsm_heatmap"] = str(ndsm_heatmap_path)
 
         survey_metadata: dict[str, Any] = {
             "las_path": str(las_path),

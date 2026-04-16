@@ -121,19 +121,24 @@ export function ProcessingDialog({
       const result = await window.api.python.execute("process", args);
       const data = result.data as {
         heap_metrics?: Record<string, unknown>[];
+        intermediate_files?: Record<string, string>;
         dsm_path?: string;
         dtm_path?: string;
         ndsm_path?: string;
         label_map_path?: string;
       };
 
+      const ifiles = data.intermediate_files ?? {};
+
       // Update survey paths
       await surveyStore.update(surveyId, {
         processingStatus: "completed",
-        dsmPath: (data.dsm_path as string) ?? null,
-        dtmPath: (data.dtm_path as string) ?? null,
-        ndsmPath: (data.ndsm_path as string) ?? null,
-        labelMapPath: (data.label_map_path as string) ?? null,
+        dsmPath: ifiles.dsm ?? (data.dsm_path as string) ?? null,
+        dtmPath: ifiles.dtm ?? (data.dtm_path as string) ?? null,
+        ndsmPath: ifiles.ndsm ?? (data.ndsm_path as string) ?? null,
+        labelMapPath: ifiles.label_map ?? (data.label_map_path as string) ?? null,
+        tilesPath: ifiles.tiles ?? null,
+        ndsmHeatmapPath: ifiles.ndsm_heatmap ?? null,
       });
 
       // Bulk create heaps
