@@ -30,16 +30,16 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+import rasterio.features
+from affine import Affine
 from pydantic import BaseModel
+from scipy.ndimage import maximum as ndimage_maximum
+from scipy.ndimage import sum as ndimage_sum
+from shapely.geometry import shape as shapely_shape
 
 from heap_analyzer.config import ProcessingConfig
 from heap_analyzer.processing.segmentation import HeapPolygon
 from heap_analyzer.utils.logging import get_stderr_logger
-from scipy.ndimage import (
-    maximum as ndimage_maximum,
-    mean as ndimage_mean,
-    sum as ndimage_sum,
-)
 
 logger = get_stderr_logger(__name__)
 
@@ -241,3 +241,169 @@ def compute_heap_metrics(
     )
 
     return metrics
+
+
+def _compute_metrics_for_mask(
+    ndsm: np.ndarray,
+    mask: np.ndarray,
+    transform: Affine,
+    base_elevation: float,
+    height_threshold: float,
+) -> HeapMetrics:
+    """Vectorized metrics for a single heap given a pre-computed boolean mask.
+
+    Uses the same formulas as compute_heap_metrics (batch version) but
+    operates directly on a boolean mask instead of a label map.
+
+    Invariants:
+      - NO Python loops over pixels.
+      - Returns HeapMetrics with volume, areas, heights, centroid, bbox.
+    """
+    resolution = abs(transform.a)
+    cell_area = resolution * resolution
+
+    # Threshold: only pixels above height_threshold contribute
+    thresholded = ndsm.copy()
+    thresholded[ndsm <= height_threshold] = 0.0
+
+    # Volume = sum(thresholded[mask]) * cell_area
+    masked_thresholded = thresholded[mask]
+    volume = float(np.sum(masked_thresholded) * cell_area)
+
+    # Planimetric area = count of above-threshold pixels * cell_area
+    above_threshold = (ndsm[mask] > height_threshold)
+    pixel_count = float(np.sum(above_threshold))
+    planimetric_area = pixel_count * cell_area
+
+    # Height statistics (from full nDSM, not thresholded)
+    masked_ndsm = ndsm[mask]
+    max_height = float(np.max(masked_ndsm)) if masked_ndsm.size > 0 else 0.0
+    mean_height = (
+        float(np.sum(masked_thresholded) / pixel_count)
+        if pixel_count > 0
+        else 0.0
+    )
+
+    # Surface area: 3D area element = cell_area * sqrt(1 + (dh/dx)^2 + (dh/dy)^2)
+    dy, dx = np.gradient(ndsm, resolution, resolution)
+    surface_element = cell_area * np.sqrt(1.0 + dx ** 2 + dy ** 2)
+    above_mask_full = np.zeros_like(ndsm, dtype=bool)
+    above_mask_full[mask] = ndsm[mask] > height_threshold
+    surface_area = float(np.sum(surface_element[above_mask_full]))
+
+    # Volume-weighted centroid
+    height, width = ndsm.shape
+    row_coords, col_coords = np.mgrid[0:height, 0:width]
+    easting = transform.c + (col_coords + 0.5) * transform.a
+    northing = transform.f + (row_coords + 0.5) * transform.e
+
+    weights = thresholded[mask]
+    sum_w = float(np.sum(weights))
+    if sum_w > 0:
+        centroid_e = float(np.sum(weights * easting[mask]) / sum_w)
+        centroid_n = float(np.sum(weights * northing[mask]) / sum_w)
+    else:
+        centroid_e = float(np.mean(easting[mask]))
+        centroid_n = float(np.mean(northing[mask]))
+
+    # Bounding box from mask pixel extent
+    rows_with_data = np.any(mask, axis=1)
+    cols_with_data = np.any(mask, axis=0)
+    row_min, row_max = np.where(rows_with_data)[0][[0, -1]]
+    col_min, col_max = np.where(cols_with_data)[0][[0, -1]]
+    bbox_min_e = transform.c + col_min * transform.a
+    bbox_max_e = transform.c + (col_max + 1) * transform.a
+    bbox_max_n = transform.f + row_min * transform.e
+    bbox_min_n = transform.f + (row_max + 1) * transform.e
+
+    return HeapMetrics(
+        heap_id=0,
+        polygon_geojson={},
+        volume_m3=volume,
+        planimetric_area_m2=planimetric_area,
+        surface_area_m2=surface_area,
+        max_height_m=max_height,
+        mean_height_m=mean_height,
+        base_elevation_m=base_elevation,
+        centroid_e=centroid_e,
+        centroid_n=centroid_n,
+        bbox_min_e=bbox_min_e,
+        bbox_min_n=bbox_min_n,
+        bbox_max_e=bbox_max_e,
+        bbox_max_n=bbox_max_n,
+    )
+
+
+def recompute_single_heap(
+    ndsm_path: str | Path,
+    polygon_geojson: dict,  # type: ignore[type-arg]
+    base_elevation: float,
+    config: ProcessingConfig,
+) -> HeapMetrics:
+    """Recompute metrics for a single heap given a GeoJSON polygon.
+
+    Used by interactive polygon editing (F3.S01). Reuses the same
+    vectorized computation as compute_heap_metrics via _compute_metrics_for_mask.
+
+    Args:
+        ndsm_path: Path to the survey's nDSM GeoTIFF.
+        polygon_geojson: GeoJSON geometry dict (Polygon or MultiPolygon).
+        base_elevation: Meters above sea level, used as reference plane.
+        config: Processing config (for height_threshold).
+
+    Returns:
+        HeapMetrics with volume, areas, heights, centroid, bbox.
+
+    Raises:
+        ValueError: If polygon is invalid or does not intersect the nDSM.
+    """
+    with rasterio.open(str(ndsm_path)) as src:
+        ndsm = src.read(1).astype(np.float64)
+        transform = src.transform
+        raster_shape = ndsm.shape
+        nodata = src.nodata
+
+    # Clean nDSM: replace nodata with 0, clip negatives
+    if nodata is not None:
+        ndsm[np.isclose(ndsm, nodata)] = 0.0
+    ndsm = np.clip(ndsm, 0.0, None)
+
+    geom = shapely_shape(polygon_geojson)
+    if not geom.is_valid:
+        geom = geom.buffer(0)  # attempt repair
+    if geom.is_empty or not geom.is_valid:
+        raise ValueError("Invalid polygon geometry")
+
+    mask = rasterio.features.rasterize(
+        [(geom, 1)],
+        out_shape=raster_shape,
+        transform=transform,
+        fill=0,
+        dtype=np.uint8,
+    ).astype(bool)
+
+    if not mask.any():
+        raise ValueError("Polygon does not intersect the nDSM raster")
+
+    metrics = _compute_metrics_for_mask(
+        ndsm, mask, transform, base_elevation, config.height_threshold
+    )
+
+    # Attach the polygon and compute bbox from geometry
+    bounds = geom.bounds  # (minx, miny, maxx, maxy)
+    return HeapMetrics(
+        heap_id=metrics.heap_id,
+        polygon_geojson=polygon_geojson,
+        volume_m3=metrics.volume_m3,
+        planimetric_area_m2=metrics.planimetric_area_m2,
+        surface_area_m2=metrics.surface_area_m2,
+        max_height_m=metrics.max_height_m,
+        mean_height_m=metrics.mean_height_m,
+        base_elevation_m=base_elevation,
+        centroid_e=metrics.centroid_e,
+        centroid_n=metrics.centroid_n,
+        bbox_min_e=bounds[0],
+        bbox_min_n=bounds[1],
+        bbox_max_e=bounds[2],
+        bbox_max_n=bounds[3],
+    )

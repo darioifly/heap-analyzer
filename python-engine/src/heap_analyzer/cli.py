@@ -219,6 +219,86 @@ def export_csv(results: str, output: str, survey_date: str | None) -> None:
         sys.exit(1)
 
 
+@main.command("recompute-heap")
+@click.option("--ndsm", required=True, type=click.Path(exists=True), help="Path to nDSM GeoTIFF")
+@click.option("--polygon-json", required=True, help="GeoJSON geometry as JSON string")
+@click.option("--base-elevation", required=True, type=float, help="Base elevation in meters")
+@click.option(
+    "--config", "config_arg", default=None,
+    help="ProcessingConfig JSON string or file path",
+)
+def recompute_heap(
+    ndsm: str, polygon_json: str,
+    base_elevation: float, config_arg: str | None,
+) -> None:
+    """Recompute metrics for a single heap polygon. Emits JSON Lines."""
+    click.echo(f"[heap-analyzer] recompute-heap called: ndsm={ndsm}", err=True)
+
+    try:
+        cfg = _parse_config(config_arg)
+        geom_dict = json.loads(polygon_json)
+
+        from heap_analyzer.processing.volume import recompute_single_heap
+
+        metrics = recompute_single_heap(ndsm, geom_dict, base_elevation, cfg)
+        emit_result(metrics.model_dump())
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("RECOMPUTE_FAILED", str(exc))
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
+@main.command("split-polygon")
+@click.option("--polygon-json", required=True, help="GeoJSON geometry of polygon to split")
+@click.option("--line-json", required=True, help="GeoJSON geometry of cutting LineString")
+def split_polygon(polygon_json: str, line_json: str) -> None:
+    """Split a polygon with a cutting line. Emits JSON Lines."""
+    click.echo("[heap-analyzer] split-polygon called", err=True)
+
+    try:
+        from heap_analyzer.processing.polygon_ops import split_polygon_by_line
+
+        parts = split_polygon_by_line(
+            json.loads(polygon_json), json.loads(line_json)
+        )
+        emit_result({"parts": parts})
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("SPLIT_FAILED", str(exc))
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        sys.exit(1)
+
+
+@main.command("merge-polygons")
+@click.option(
+    "--polygons-json", required=True,
+    help="JSON array of GeoJSON geometries",
+)
+def merge_polygons_cmd(polygons_json: str) -> None:
+    """Merge >= 2 polygons into one. Emits JSON Lines."""
+    click.echo("[heap-analyzer] merge-polygons called", err=True)
+
+    try:
+        from heap_analyzer.processing.polygon_ops import merge_polygons
+
+        merged = merge_polygons(json.loads(polygons_json))
+        emit_result({"merged": merged})
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("MERGE_FAILED", str(exc))
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        sys.exit(1)
+
+
 def _parse_config(config_arg: str | None) -> ProcessingConfig:
     """Parse ProcessingConfig from --config argument.
 
