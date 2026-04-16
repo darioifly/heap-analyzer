@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('db:surveys:create', data),
     updateSurvey: (id: number, data: Record<string, unknown>): Promise<unknown> =>
       ipcRenderer.invoke('db:surveys:update', id, data),
+    deleteSurvey: (id: number): Promise<void> => ipcRenderer.invoke('db:surveys:delete', id),
 
     // Heaps
     listHeaps: (surveyId: number): Promise<unknown[]> =>
@@ -82,5 +83,21 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('db:heaps:update', id, data),
     bulkCreateHeaps: (heaps: Record<string, unknown>[]): Promise<unknown[]> =>
       ipcRenderer.invoke('db:heaps:bulkCreate', heaps),
+  },
+
+  dialog: {
+    /** Open native file picker dialog. Returns selected file path or null if canceled. */
+    openFile: (options: {
+      title?: string;
+      filters?: { name: string; extensions: string[] }[];
+      defaultPath?: string;
+    }): Promise<string | null> => ipcRenderer.invoke('dialog:openFile', options),
+
+    /** Open native save dialog. Returns selected path or null if canceled. */
+    saveFile: (options: {
+      title?: string;
+      filters?: { name: string; extensions: string[] }[];
+      defaultPath?: string;
+    }): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile', options),
   },
 });

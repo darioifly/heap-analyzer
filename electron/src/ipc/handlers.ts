@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, dialog } from 'electron';
 import { PythonBridge } from './python-bridge';
 
 let bridge: PythonBridge | null = null;
@@ -7,6 +7,7 @@ let bridge: PythonBridge | null = null;
 export function setupIpcHandlers(): void {
   setupPythonHandlers();
   setupDbHandlers();
+  setupDialogHandlers();
 }
 
 // ---------------------------------------------------------------------------
@@ -37,7 +38,52 @@ function setupPythonHandlers(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Database handlers — placeholder implementations (full in F0.S05)
+// Dialog handlers
+// ---------------------------------------------------------------------------
+
+function setupDialogHandlers(): void {
+  ipcMain.handle(
+    'dialog:openFile',
+    async (
+      _event,
+      options: {
+        title?: string;
+        filters?: { name: string; extensions: string[] }[];
+        defaultPath?: string;
+      },
+    ) => {
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        title: options.title,
+        filters: options.filters,
+        defaultPath: options.defaultPath,
+      });
+      return result.canceled ? null : result.filePaths[0];
+    },
+  );
+
+  ipcMain.handle(
+    'dialog:saveFile',
+    async (
+      _event,
+      options: {
+        title?: string;
+        filters?: { name: string; extensions: string[] }[];
+        defaultPath?: string;
+      },
+    ) => {
+      const result = await dialog.showSaveDialog({
+        title: options.title,
+        filters: options.filters,
+        defaultPath: options.defaultPath,
+      });
+      return result.canceled ? null : result.filePath;
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Database handlers — placeholder implementations (wired to real DB in F0.S05)
 // ---------------------------------------------------------------------------
 
 function setupDbHandlers(): void {
@@ -48,6 +94,7 @@ function setupDbHandlers(): void {
   ipcMain.handle('db:surveys:list', async (_e, _projectId) => []);
   ipcMain.handle('db:surveys:create', async (_e, _data) => null);
   ipcMain.handle('db:surveys:update', async (_e, _id, _data) => null);
+  ipcMain.handle('db:surveys:delete', async (_e, _id) => null);
   ipcMain.handle('db:heaps:list', async (_e, _surveyId) => []);
   ipcMain.handle('db:heaps:create', async (_e, _data) => null);
   ipcMain.handle('db:heaps:update', async (_e, _id, _data) => null);
