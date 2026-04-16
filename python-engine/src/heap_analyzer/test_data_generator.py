@@ -271,6 +271,12 @@ def _generate_las(
     header.offsets = np.array([all_x.min(), all_y.min(), all_z.min()])
     header.scales = np.array([0.001, 0.001, 0.001])
 
+    # Embed CRS as WKT VLR (EPSG:32632)
+    import pyproj
+
+    crs = pyproj.CRS.from_epsg(32632)
+    header.add_crs(crs)
+
     las = laspy.LasData(header=header)
     las.x = all_x
     las.y = all_y
