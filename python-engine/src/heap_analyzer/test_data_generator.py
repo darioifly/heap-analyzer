@@ -11,7 +11,7 @@ Heaps (analytically exact volumes):
   1. Cone:           center=(50,50),  r=15m, h=5m  → V=πr²h/3 ≈ 1178.097 m³
   2. Hemisphere:     center=(150,50), r=12m         → V=2πr³/3 ≈ 3619.115 m³
   3. Pyramid:        center=(50,150), base 20×20m, h=6m → V=b²h/3 = 800.0 m³
-  4. Truncated cone: center=(150,150), r_b=18m, r_t=8m, h=4m → V≈2345.699 m³
+  4. Truncated cone: center=(150,150), r_b=18m, r_t=8m, h=4m → V≈2228.436 m³
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ PYRAMID_VOL = PYRAMID_BASE**2 * PYRAMID_H / 3  # = 800.0
 TCONE_RB = 18.0
 TCONE_RT = 8.0
 TCONE_H = 4.0
-TCONE_VOL = math.pi * TCONE_H * (TCONE_RB**2 + TCONE_RB * TCONE_RT + TCONE_RT**2) / 3  # ≈ 2345.699
+TCONE_VOL = math.pi * TCONE_H * (TCONE_RB**2 + TCONE_RB * TCONE_RT + TCONE_RT**2) / 3  # ≈ 2228.436
 
 # Site parameters
 ORIGIN_E = 500000.0
