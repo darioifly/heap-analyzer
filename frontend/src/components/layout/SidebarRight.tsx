@@ -1,6 +1,19 @@
 import { MousePointerClick } from "lucide-react";
+import { useHeapStore } from "@/stores/heapStore";
+import { useSurveyStore } from "@/stores/surveyStore";
+import { HeapProperties } from "@/components/heaps/HeapProperties";
+import { SurveySummary } from "@/components/heaps/SurveySummary";
 
 export function SidebarRight() {
+  const selectedHeapId = useHeapStore((s) => s.selectedHeapId);
+  const heaps = useHeapStore((s) => s.heaps);
+  const selectedHeap = heaps.find((h) => h.id === selectedHeapId);
+
+  const selectedSurveyId = useSurveyStore((s) => s.selectedSurveyId);
+  const survey = useSurveyStore((s) =>
+    s.surveys.find((sv) => sv.id === s.selectedSurveyId),
+  );
+
   return (
     <div className="flex flex-col h-full border-l border-border">
       {/* Header */}
@@ -10,17 +23,22 @@ export function SidebarRight() {
         </h2>
       </div>
 
-      {/* Empty state */}
-      <div className="flex flex-col items-center justify-center flex-1 px-4 py-8 text-center">
-        <MousePointerClick
-          className="text-muted-foreground mb-3"
-          size={32}
-          strokeWidth={1.75}
-        />
-        <p className="text-sm text-muted-foreground">
-          Seleziona un cumulo per vedere i dettagli
-        </p>
-      </div>
+      {selectedHeap ? (
+        <HeapProperties heap={selectedHeap} />
+      ) : survey && selectedSurveyId ? (
+        <SurveySummary survey={survey} heaps={heaps} />
+      ) : (
+        <div className="flex flex-col items-center justify-center flex-1 px-4 py-8 text-center">
+          <MousePointerClick
+            className="text-muted-foreground mb-3"
+            size={32}
+            strokeWidth={1.75}
+          />
+          <p className="text-sm text-muted-foreground">
+            Seleziona un cumulo per vedere i dettagli
+          </p>
+        </div>
+      )}
     </div>
   );
 }
