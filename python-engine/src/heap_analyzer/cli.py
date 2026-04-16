@@ -25,7 +25,7 @@ def main() -> None:
 @click.option("--las", required=True, help="Path to input LAS/LAZ file")
 @click.option("--tiff", required=True, help="Path to input GeoTIFF ortophoto")
 @click.option("--output", required=True, help="Output directory path")
-@click.option("--config", default=None, help="JSON string with ProcessingConfig overrides")
+@click.option("--config", default=None, help="Path to JSON file with ProcessingConfig overrides")
 def process(las: str, tiff: str, output: str, config: str | None) -> None:
     """Process a LAS point cloud + GeoTIFF ortophoto to detect and measure heaps.
 
@@ -34,50 +34,45 @@ def process(las: str, tiff: str, output: str, config: str | None) -> None:
     """
     print(f"[heap-analyzer] process called: las={las} tiff={tiff} output={output}", file=sys.stderr)
 
-    # Parse config overrides if provided
-    cfg_dict: dict[str, Any] = {}
-    if config:
-        try:
-            cfg_dict = json.loads(config)
-        except json.JSONDecodeError as exc:
-            emit_error("INVALID_CONFIG", f"Config JSON is not valid: {exc}")
-            sys.exit(1)
-
     try:
-        processing_config = ProcessingConfig(**cfg_dict)
+        processing_config = _parse_config(config)
+    except SystemExit:
+        raise
     except Exception as exc:  # noqa: BLE001
-        emit_error("INVALID_CONFIG", f"Config validation failed: {exc}")
+        emit_error("INVALID_CONFIG", f"Errore configurazione: {exc}")
         sys.exit(1)
 
-    output_dir = Path(output)
+    try:
+        from heap_analyzer.pipeline import ProcessingPipeline
 
-    # Validate inputs exist (skip for test/dummy paths)
-    las_path = Path(las)
-    tiff_path = Path(tiff)
+        pipeline = ProcessingPipeline(processing_config)
+        las_path = Path(las)
+        tiff_path = Path(tiff)
+        output_dir = Path(output)
 
-    emit_progress("validation", 5.0, "Validazione file di input...")
+        def on_progress(pct: int, msg: str) -> None:
+            emit_progress("processing", float(pct), msg)
 
-    if not las_path.exists():
-        emit_warning(f"File LAS non trovato: {las} (modalità test)")
-    if not tiff_path.exists():
-        emit_warning(f"File TIFF non trovato: {tiff} (modalità test)")
+        result = pipeline.run(las_path, tiff_path, output_dir, progress_callback=on_progress)
 
-    emit_progress("dsm", 20.0, "Generazione DSM...")
-    emit_progress("dtm", 40.0, "Stima DTM...")
-    emit_progress("segmentation", 60.0, "Segmentazione cumuli...")
-    emit_progress("volume", 80.0, "Calcolo volumetrico...")
-    emit_progress("complete", 100.0, "Elaborazione completata")
+        emit_result({
+            "heap_metrics": [m.model_dump() for m in result.heap_metrics],
+            "survey_metadata": result.survey_metadata,
+            "base_elevation": result.base_elevation,
+            "base_elevation_method": result.base_elevation_method,
+            "base_elevation_confidence": result.base_elevation_confidence,
+            "intermediate_files": result.intermediate_files,
+            "warnings": result.warnings,
+        })
 
-    emit_result({
-        "heaps": [],
-        "metadata": {
-            "las_path": str(las_path),
-            "tiff_path": str(tiff_path),
-            "output_dir": str(output_dir),
-            "config": processing_config.model_dump(),
-            "heap_count": 0,
-        },
-    })
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("PROCESSING_ERROR", f"Errore durante l'elaborazione: {exc}")
+        print(f"[heap-analyzer] ERROR: {exc}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
 
 
 @main.command()
@@ -90,22 +85,28 @@ def validate(las: str, tiff: str) -> None:
     """
     print(f"[heap-analyzer] validate called: las={las} tiff={tiff}", file=sys.stderr)
 
-    las_path = Path(las)
-    tiff_path = Path(tiff)
+    try:
+        from heap_analyzer.pipeline import ProcessingPipeline
 
-    emit_progress("validation", 10.0, "Apertura file...")
+        pipeline = ProcessingPipeline()
+        las_path = Path(las)
+        tiff_path = Path(tiff)
 
-    if not las_path.exists():
-        emit_error("FILE_NOT_FOUND", f"File LAS non trovato: {las}")
+        emit_progress("validation", 10.0, "Validazione input...")
+        errors = pipeline.validate_inputs(las_path, tiff_path)
+        emit_progress("validation", 100.0, "Validazione completata")
+
+        if errors:
+            emit_result({"valid": False, "errors": errors})
+            sys.exit(1)
+        else:
+            emit_result({"valid": True, "errors": []})
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("VALIDATION_ERROR", f"Errore validazione: {exc}")
         sys.exit(1)
-
-    if not tiff_path.exists():
-        emit_error("FILE_NOT_FOUND", f"File TIFF non trovato: {tiff}")
-        sys.exit(1)
-
-    emit_progress("validation", 50.0, "Verifica CRS...")
-    emit_progress("validation", 100.0, "Validazione completata")
-    emit_result({"valid": True, "las_path": las, "tiff_path": tiff})
 
 
 @main.command("generate-test-data")
@@ -117,18 +118,102 @@ def generate_test_data(output: str) -> None:
     """
     print(f"[heap-analyzer] generate-test-data called: output={output}", file=sys.stderr)
 
-    from heap_analyzer.test_data_generator import create_test_site
+    try:
+        from heap_analyzer.test_data_generator import create_test_site
 
-    output_dir = Path(output)
-    output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    emit_progress("setup", 5.0, "Inizializzazione generatore...")
-    create_test_site(output_dir)
-    emit_progress("complete", 100.0, "Dataset sintetico generato")
-    emit_result({
-        "output_dir": str(output_dir),
-        "files": ["test.las", "test.tif", "ground_truth.json"],
-    })
+        emit_progress("setup", 5.0, "Inizializzazione generatore...")
+        create_test_site(output_dir)
+        emit_progress("complete", 100.0, "Dataset sintetico generato")
+        emit_result({
+            "output_dir": str(output_dir),
+            "files": ["test.las", "test.tif", "ground_truth.json"],
+        })
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("GENERATOR_ERROR", f"Errore generazione dati: {exc}")
+        sys.exit(1)
+
+
+@main.command("export-csv")
+@click.option("--results", required=True, help="Path to results.json from pipeline")
+@click.option("--output", required=True, help="Output CSV file path")
+@click.option("--survey-date", default=None, help="Survey date (YYYY-MM-DD)")
+def export_csv(results: str, output: str, survey_date: str | None) -> None:
+    """Export heap metrics to CSV.
+
+    CSV format: semicolon separator, UTF-8 with BOM, Italian headers.
+    """
+    print(f"[heap-analyzer] export-csv called: results={results} output={output}", file=sys.stderr)
+
+    try:
+        from heap_analyzer.export.csv_export import export_csv as do_export
+        from heap_analyzer.processing.volume import HeapMetrics
+
+        results_path = Path(results)
+        if not results_path.exists():
+            emit_error("FILE_NOT_FOUND", f"File risultati non trovato: {results}")
+            sys.exit(1)
+
+        data = json.loads(results_path.read_text(encoding="utf-8"))
+
+        # Parse heap metrics
+        metrics = [HeapMetrics(**hm) for hm in data["heap_metrics"]]
+
+        # Survey metadata
+        survey_metadata = data.get("survey_metadata", {})
+
+        # Survey date
+        if survey_date:
+            survey_metadata["survey_date"] = survey_date
+        elif "survey_date" not in survey_metadata:
+            import datetime
+            today = datetime.date.today().isoformat()
+            emit_warning(f"Data rilievo non specificata, uso data odierna: {today}")
+            survey_metadata["survey_date"] = today
+
+        emit_progress("export", 50.0, "Esportazione CSV...")
+        output_path = do_export(metrics, survey_metadata, Path(output))
+        emit_progress("export", 100.0, "Esportazione CSV completata")
+        emit_result({"output_path": str(output_path), "heap_count": len(metrics)})
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("EXPORT_ERROR", f"Errore esportazione CSV: {exc}")
+        sys.exit(1)
+
+
+def _parse_config(config_arg: str | None) -> ProcessingConfig:
+    """Parse ProcessingConfig from --config argument.
+
+    Args:
+        config_arg: Path to JSON file, or None for defaults.
+
+    Returns:
+        ProcessingConfig instance.
+    """
+    if config_arg is None:
+        return ProcessingConfig()
+
+    config_path = Path(config_arg)
+    if config_path.exists():
+        # Read from file
+        cfg_text = config_path.read_text(encoding="utf-8")
+    else:
+        # Try as inline JSON string
+        cfg_text = config_arg
+
+    try:
+        cfg_dict = json.loads(cfg_text)
+    except json.JSONDecodeError as exc:
+        emit_error("INVALID_CONFIG", f"Config JSON non valido: {exc}")
+        sys.exit(1)
+
+    return ProcessingConfig(**cfg_dict)
 
 
 if __name__ == "__main__":
