@@ -1,7 +1,6 @@
 """Tests for LAS/LAZ chunked reader."""
 
 import json
-import tempfile
 import tracemalloc
 from pathlib import Path
 

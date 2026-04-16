@@ -1,12 +1,9 @@
 """Tests for GeoTIFF tiled reader."""
 
-import tempfile
 import tracemalloc
 from pathlib import Path
 
-import numpy as np
 import pytest
-import rasterio
 
 from heap_analyzer.io.tiff_reader import TiffMetadata, TiffReader, TiffReaderError
 
