@@ -3,36 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { SurveyList } from "./SurveyList";
 import { useProjectStore } from "@/stores/projectStore";
 import { useSurveyStore } from "@/stores/surveyStore";
-
-function setupMockApi(surveys: Record<string, unknown>[] = []) {
-  window.api = {
-    python: {
-      execute: vi.fn(),
-      cancel: vi.fn(),
-      onProgress: vi.fn(),
-      onWarning: vi.fn(),
-      removeAllListeners: vi.fn(),
-    },
-    db: {
-      listProjects: vi.fn().mockResolvedValue([]),
-      createProject: vi.fn(),
-      updateProject: vi.fn(),
-      deleteProject: vi.fn(),
-      listSurveys: vi.fn().mockResolvedValue(surveys),
-      createSurvey: vi.fn(),
-      updateSurvey: vi.fn(),
-      deleteSurvey: vi.fn(),
-      listHeaps: vi.fn().mockResolvedValue([]),
-      createHeap: vi.fn(),
-      updateHeap: vi.fn(),
-      bulkCreateHeaps: vi.fn().mockResolvedValue([]),
-    },
-    dialog: {
-      openFile: vi.fn().mockResolvedValue(null),
-      saveFile: vi.fn().mockResolvedValue(null),
-    },
-  };
-}
+import { setupMockApi } from "@/test/mock-api";
 
 describe("SurveyList", () => {
   beforeEach(() => {
@@ -57,20 +28,10 @@ describe("SurveyList", () => {
     useSurveyStore.setState({
       surveys: [
         {
-          id: 1,
-          projectId: 1,
-          surveyDate: "2026-01-15",
-          operator: "Mario Rossi",
-          lasPath: "/test.las",
-          tiffPath: "/test.tif",
-          processingParams: null,
-          processingStatus: "completed" as const,
-          dsmPath: null,
-          dtmPath: null,
-          ndsmPath: null,
-          labelMapPath: null,
-          createdAt: "",
-          updatedAt: "",
+          id: 1, projectId: 1, surveyDate: "2026-01-15", operator: "Mario Rossi",
+          lasPath: "/test.las", tiffPath: "/test.tif", processingParams: null,
+          processingStatus: "completed" as const, dsmPath: null, dtmPath: null,
+          ndsmPath: null, labelMapPath: null, createdAt: "", updatedAt: "",
         },
       ],
     });

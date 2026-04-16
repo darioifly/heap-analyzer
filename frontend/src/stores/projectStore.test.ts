@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useProjectStore } from "./projectStore";
+import { setupMockApi } from "@/test/mock-api";
 
 const mockProjects = [
   {
@@ -14,43 +15,9 @@ const mockProjects = [
   },
 ];
 
-function setupMockApi() {
-  window.api = {
-    python: {
-      execute: vi.fn(),
-      cancel: vi.fn(),
-      onProgress: vi.fn(),
-      onWarning: vi.fn(),
-      removeAllListeners: vi.fn(),
-    },
-    db: {
-      listProjects: vi.fn().mockResolvedValue(mockProjects),
-      createProject: vi.fn().mockImplementation((data) =>
-        Promise.resolve({ id: 2, ...data, created_at: "2026-01-02", updated_at: "2026-01-02" }),
-      ),
-      updateProject: vi.fn().mockImplementation((id, data) =>
-        Promise.resolve({ ...mockProjects[0], ...data, id }),
-      ),
-      deleteProject: vi.fn().mockResolvedValue(undefined),
-      listSurveys: vi.fn().mockResolvedValue([]),
-      createSurvey: vi.fn(),
-      updateSurvey: vi.fn(),
-      deleteSurvey: vi.fn().mockResolvedValue(undefined),
-      listHeaps: vi.fn().mockResolvedValue([]),
-      createHeap: vi.fn(),
-      updateHeap: vi.fn(),
-      bulkCreateHeaps: vi.fn().mockResolvedValue([]),
-    },
-    dialog: {
-      openFile: vi.fn().mockResolvedValue(null),
-      saveFile: vi.fn().mockResolvedValue(null),
-    },
-  };
-}
-
 describe("projectStore", () => {
   beforeEach(() => {
-    setupMockApi();
+    setupMockApi({ projects: mockProjects });
     useProjectStore.setState({
       projects: [],
       selectedProjectId: null,
@@ -76,7 +43,7 @@ describe("projectStore", () => {
       notes: null,
       materialCategories: [],
     });
-    expect(project.id).toBe(2);
+    expect(project.id).toBeTypeOf("number");
     expect(useProjectStore.getState().projects).toHaveLength(1);
   });
 
@@ -84,14 +51,8 @@ describe("projectStore", () => {
     useProjectStore.setState({
       projects: [
         {
-          id: 1,
-          name: "Old",
-          location: null,
-          crs: "EPSG:32632",
-          notes: null,
-          materialCategories: [],
-          createdAt: "",
-          updatedAt: "",
+          id: 1, name: "Old", location: null, crs: "EPSG:32632",
+          notes: null, materialCategories: [], createdAt: "", updatedAt: "",
         },
       ],
     });
@@ -103,14 +64,8 @@ describe("projectStore", () => {
     useProjectStore.setState({
       projects: [
         {
-          id: 1,
-          name: "ToDelete",
-          location: null,
-          crs: "EPSG:32632",
-          notes: null,
-          materialCategories: [],
-          createdAt: "",
-          updatedAt: "",
+          id: 1, name: "ToDelete", location: null, crs: "EPSG:32632",
+          notes: null, materialCategories: [], createdAt: "", updatedAt: "",
         },
       ],
       selectedProjectId: 1,

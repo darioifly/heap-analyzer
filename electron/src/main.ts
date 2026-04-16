@@ -1,9 +1,12 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
+import { initDatabase, DatabaseService } from './database/db';
 import { setupIpcHandlers } from './ipc/handlers';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const DEV_SERVER_URL = 'http://localhost:5173';
+
+let dbService: DatabaseService;
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -33,7 +36,14 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
-  setupIpcHandlers();
+  // Initialize database
+  const dbPath = path.join(app.getPath('userData'), 'heap-analyzer.db');
+  const db = initDatabase(dbPath);
+  dbService = new DatabaseService(db);
+
+  // Register IPC handlers with real DB
+  setupIpcHandlers(dbService);
+
   createWindow();
 
   app.on('activate', () => {

@@ -45,6 +45,21 @@ declare global {
         updateHeap: (id: number, data: Record<string, unknown>) => Promise<Record<string, unknown>>;
         bulkCreateHeaps: (heaps: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>;
       };
+      shell: {
+        showItemInFolder: (fullPath: string) => Promise<void>;
+      };
+      tiles?: {
+        getBaseUrl: () => Promise<string>;
+        getMetadata: (surveyId: number) => Promise<{
+          crs: string;
+          bounds: [number, number, number, number];
+          origin: [number, number];
+          resolutions: number[];
+          tileSize: number;
+          minZoom: number;
+          maxZoom: number;
+        }>;
+      };
       dialog: {
         openFile: (options: {
           title?: string;

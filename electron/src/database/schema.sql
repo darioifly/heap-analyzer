@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS surveys (
   dtm_path TEXT,
   ndsm_path TEXT,
   label_map_path TEXT,
+  tiles_path TEXT,
+  ndsm_heatmap_path TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

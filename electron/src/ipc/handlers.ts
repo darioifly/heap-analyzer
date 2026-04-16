@@ -1,13 +1,15 @@
-import { ipcMain, dialog } from 'electron';
+import { ipcMain, dialog, shell } from 'electron';
 import { PythonBridge } from './python-bridge';
+import type { DatabaseService } from '../database/db';
 
 let bridge: PythonBridge | null = null;
 
-/** Register all IPC handlers. Call once from main.ts. */
-export function setupIpcHandlers(): void {
+/** Register all IPC handlers. Call once from main.ts after DB init. */
+export function setupIpcHandlers(dbService: DatabaseService): void {
   setupPythonHandlers();
-  setupDbHandlers();
+  setupDbHandlers(dbService);
   setupDialogHandlers();
+  setupShellHandlers();
 }
 
 // ---------------------------------------------------------------------------
@@ -83,20 +85,35 @@ function setupDialogHandlers(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Database handlers — placeholder implementations (wired to real DB in F0.S05)
+// Shell handlers
 // ---------------------------------------------------------------------------
 
-function setupDbHandlers(): void {
-  ipcMain.handle('db:projects:list', async () => []);
-  ipcMain.handle('db:projects:create', async (_e, _data) => null);
-  ipcMain.handle('db:projects:update', async (_e, _id, _data) => null);
-  ipcMain.handle('db:projects:delete', async (_e, _id) => null);
-  ipcMain.handle('db:surveys:list', async (_e, _projectId) => []);
-  ipcMain.handle('db:surveys:create', async (_e, _data) => null);
-  ipcMain.handle('db:surveys:update', async (_e, _id, _data) => null);
-  ipcMain.handle('db:surveys:delete', async (_e, _id) => null);
-  ipcMain.handle('db:heaps:list', async (_e, _surveyId) => []);
-  ipcMain.handle('db:heaps:create', async (_e, _data) => null);
-  ipcMain.handle('db:heaps:update', async (_e, _id, _data) => null);
-  ipcMain.handle('db:heaps:bulkCreate', async (_e, _heaps) => []);
+function setupShellHandlers(): void {
+  ipcMain.handle('shell:showItemInFolder', async (_event, fullPath: string) => {
+    shell.showItemInFolder(fullPath);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Database handlers — wired to real DatabaseService
+// ---------------------------------------------------------------------------
+
+function setupDbHandlers(db: DatabaseService): void {
+  // Projects
+  ipcMain.handle('db:projects:list', () => db.listProjects());
+  ipcMain.handle('db:projects:create', (_e, data) => db.createProject(data));
+  ipcMain.handle('db:projects:update', (_e, id: number, data) => db.updateProject(id, data));
+  ipcMain.handle('db:projects:delete', (_e, id: number) => db.deleteProject(id));
+
+  // Surveys
+  ipcMain.handle('db:surveys:list', (_e, projectId: number) => db.listSurveys(projectId));
+  ipcMain.handle('db:surveys:create', (_e, data) => db.createSurvey(data));
+  ipcMain.handle('db:surveys:update', (_e, id: number, data) => db.updateSurvey(id, data));
+  ipcMain.handle('db:surveys:delete', (_e, id: number) => db.deleteSurvey(id));
+
+  // Heaps
+  ipcMain.handle('db:heaps:list', (_e, surveyId: number) => db.listHeaps(surveyId));
+  ipcMain.handle('db:heaps:create', (_e, data) => db.createHeap(data));
+  ipcMain.handle('db:heaps:update', (_e, id: number, data) => db.updateHeap(id, data));
+  ipcMain.handle('db:heaps:bulkCreate', (_e, heaps) => db.bulkCreateHeaps(heaps));
 }

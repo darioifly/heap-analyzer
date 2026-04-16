@@ -85,6 +85,12 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('db:heaps:bulkCreate', heaps),
   },
 
+  shell: {
+    /** Show a file in its parent folder in the system file manager. */
+    showItemInFolder: (fullPath: string): Promise<void> =>
+      ipcRenderer.invoke('shell:showItemInFolder', fullPath),
+  },
+
   dialog: {
     /** Open native file picker dialog. Returns selected file path or null if canceled. */
     openFile: (options: {

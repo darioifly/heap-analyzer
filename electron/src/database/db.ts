@@ -30,6 +30,8 @@ export interface Survey {
   dtm_path: string | null;
   ndsm_path: string | null;
   label_map_path: string | null;
+  tiles_path: string | null;
+  ndsm_heatmap_path: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -76,7 +78,20 @@ export function initDatabase(dbPath: string): Database.Database {
   const schemaPath = path.join(__dirname, 'schema.sql');
   const schema = fs.readFileSync(schemaPath, 'utf8');
   db.exec(schema);
+  migrateSchema(db);
   return db;
+}
+
+/** Add columns that may be missing from older databases. */
+function migrateSchema(db: Database.Database): void {
+  const cols = db.prepare('PRAGMA table_info(surveys)').all() as { name: string }[];
+  const colNames = new Set(cols.map((c) => c.name));
+  if (!colNames.has('tiles_path')) {
+    db.exec('ALTER TABLE surveys ADD COLUMN tiles_path TEXT');
+  }
+  if (!colNames.has('ndsm_heatmap_path')) {
+    db.exec('ALTER TABLE surveys ADD COLUMN ndsm_heatmap_path TEXT');
+  }
 }
 
 export class DatabaseService {
@@ -137,11 +152,13 @@ export class DatabaseService {
       INSERT INTO surveys
         (project_id, survey_date, operator, las_path, tiff_path,
          processing_params, processing_status,
-         dsm_path, dtm_path, ndsm_path, label_map_path)
+         dsm_path, dtm_path, ndsm_path, label_map_path,
+         tiles_path, ndsm_heatmap_path)
       VALUES
         (@project_id, @survey_date, @operator, @las_path, @tiff_path,
          @processing_params, @processing_status,
-         @dsm_path, @dtm_path, @ndsm_path, @label_map_path)
+         @dsm_path, @dtm_path, @ndsm_path, @label_map_path,
+         @tiles_path, @ndsm_heatmap_path)
     `);
     const info = stmt.run(data);
     return this.db
@@ -162,13 +179,17 @@ export class DatabaseService {
     return (this.db.prepare('SELECT * FROM surveys WHERE id = ?').get(id) as Survey) ?? null;
   }
 
+  deleteSurvey(id: number): void {
+    this.db.prepare('DELETE FROM surveys WHERE id = ?').run(id);
+  }
+
   // -------------------------------------------------------------------------
   // Heaps
   // -------------------------------------------------------------------------
 
   listHeaps(surveyId: number): Heap[] {
     return this.db
-      .prepare('SELECT * FROM heaps WHERE survey_id = ? AND is_excluded = 0 ORDER BY id')
+      .prepare('SELECT * FROM heaps WHERE survey_id = ? ORDER BY id')
       .all(surveyId) as Heap[];
   }
 
