@@ -1,12 +1,27 @@
 import "ol/ol.css";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import OlMap from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import XYZ from "ol/source/XYZ";
+import VectorLayer from "ol/layer/Vector";
+import VectorSource from "ol/source/Vector";
+import Feature from "ol/Feature";
+import { Polygon } from "ol/geom";
+import { Style, Fill, Stroke, Text } from "ol/style";
+import Select from "ol/interaction/Select";
+import { click, pointerMove } from "ol/events/condition";
 import TileGrid from "ol/tilegrid/TileGrid";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
+import type { FeatureLike } from "ol/Feature";
 import { getUtmProjection } from "@/lib/projections";
+import { useHeapStore } from "@/stores/heapStore";
+import { useEditingStore } from "@/stores/editingStore";
+import { useMapStore } from "@/stores/mapStore";
+import { EditingToolbar } from "./EditingToolbar";
+import { PolygonEditor } from "./PolygonEditor";
+import { EditingActions } from "./EditingActions";
+import { useEditingShortcuts } from "@/hooks/useEditingShortcuts";
 
 interface TileMetadata {
   crs: string;
@@ -18,24 +33,63 @@ interface TileMetadata {
   max_zoom: number;
 }
 
-interface MapViewProps {
-  surveyId: number;
-  /** Called when the OL map instance is ready. Used by parent to add overlays. */
-  onMapReady?: (map: OlMap) => void;
+const CATEGORY_COLORS: Record<string, string> = {
+  "Rottame ferroso": "#B45309",
+  Ghisa: "#6575A0",
+  Scorie: "#6B7280",
+  Cascami: "#92400E",
+  RAEE: "#059669",
+};
+const DEFAULT_COLOR = "#6575A0";
+
+function getColor(category: string | null): string {
+  return (category && CATEGORY_COLORS[category]) || DEFAULT_COLOR;
 }
 
-export function MapView({ surveyId, onMapReady }: MapViewProps) {
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+interface MapViewProps {
+  surveyId: number;
+}
+
+export function MapView({ surveyId }: MapViewProps) {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OlMap | null>(null);
+  const heapSourceRef = useRef<VectorSource>(new VectorSource());
+  const heapLayerRef = useRef<VectorLayer | null>(null);
+  const selectRef = useRef<Select | null>(null);
+  const hoverRef = useRef<Select | null>(null);
   const [coordinate, setCoordinate] = useState<[number, number] | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
-  const handleMapReady = useCallback(
-    (map: OlMap) => {
-      onMapReady?.(map);
-    },
-    [onMapReady],
+  const heaps = useHeapStore((s) => s.heaps);
+  const selectedHeapId = useHeapStore((s) => s.selectedHeapId);
+  const selectHeap = useHeapStore((s) => s.select);
+  const loadBySurvey = useHeapStore((s) => s.loadBySurvey);
+  const activeTool = useEditingStore((s) => s.activeTool);
+  const mergeSelection = useEditingStore((s) => s.mergeSelection);
+  const toggleMergeSelection = useEditingStore(
+    (s) => s.toggleMergeSelection,
   );
 
+  const heapsVisible = useMapStore((s) => s.heapsVisible);
+  const heapsOpacity = useMapStore((s) => s.heapsOpacity);
+  const labelsVisible = useMapStore((s) => s.labelsVisible);
+
+  // Enable keyboard shortcuts
+  useEditingShortcuts(mapReady);
+
+  // Load heaps on mount and when surveyId changes
+  useEffect(() => {
+    loadBySurvey(surveyId);
+  }, [surveyId, loadBySurvey]);
+
+  // Create map
   useEffect(() => {
     if (!mapDivRef.current) return;
     let cancelled = false;
@@ -58,7 +112,7 @@ export function MapView({ surveyId, onMapReady }: MapViewProps) {
         tileSize: metadata.tileSize,
       });
 
-      const source = new XYZ({
+      const tileSource = new XYZ({
         projection,
         tileGrid,
         url: `${baseUrl}/tiles/${surveyId}/{z}/{x}/{y}.png`,
@@ -67,7 +121,7 @@ export function MapView({ surveyId, onMapReady }: MapViewProps) {
 
       const map = new OlMap({
         target: mapDivRef.current!,
-        layers: [new TileLayer({ source })],
+        layers: [new TileLayer({ source: tileSource })],
         view: new View({
           projection,
           center: [
@@ -90,22 +144,213 @@ export function MapView({ surveyId, onMapReady }: MapViewProps) {
       });
 
       map.getView().fit(extent, { padding: [20, 20, 20, 20] });
+
+      // Create heap vector layer
+      const heapSource = heapSourceRef.current;
+      const heapLayer = new VectorLayer({
+        source: heapSource,
+        visible: true,
+      });
+      map.addLayer(heapLayer);
+      heapLayerRef.current = heapLayer;
+
       mapRef.current = map;
-      handleMapReady(map);
+      setMapReady(true);
     })();
 
     return () => {
       cancelled = true;
+      setMapReady(false);
       if (mapRef.current) {
         mapRef.current.setTarget(undefined);
         mapRef.current = null;
       }
     };
-  }, [surveyId, handleMapReady]);
+  }, [surveyId]);
+
+  // Sync heaps to vector source
+  useEffect(() => {
+    const source = heapSourceRef.current;
+    source.clear();
+
+    for (const heap of heaps) {
+      const coords = heap.polygon?.coordinates;
+      const geom = coords ? new Polygon(coords) : undefined;
+      const feature = new Feature({
+        geometry: geom,
+        heapId: heap.id,
+        label: heap.label,
+        category: heap.materialCategory,
+        volume: heap.volume,
+        isManuallyConfirmed: heap.isManuallyConfirmed,
+      });
+      feature.setId(heap.id);
+      source.addFeature(feature);
+    }
+  }, [heaps]);
+
+  // Style function reacting to selection state
+  useEffect(() => {
+    const layer = heapLayerRef.current;
+    if (!layer) return;
+
+    layer.setStyle((feature: FeatureLike): Style => {
+      const props = feature.getProperties();
+      const color = getColor(props.category);
+      const isSelected = feature.getId() === selectedHeapId;
+      const isMergeSelected = mergeSelection.includes(
+        feature.getId() as number,
+      );
+      const strokeWidth = isSelected || isMergeSelected ? 3 : 2;
+      const fillAlpha = isSelected ? 0.35 : isMergeSelected ? 0.3 : 0.25;
+      const strokeColor = isSelected
+        ? "#F9FAFB"
+        : isMergeSelected
+          ? "#F59E0B"
+          : color;
+
+      return new Style({
+        stroke: new Stroke({
+          color: strokeColor,
+          width: strokeWidth,
+          lineDash: isMergeSelected ? [5, 3] : undefined,
+        }),
+        fill: new Fill({ color: hexToRgba(color, fillAlpha) }),
+        text: labelsVisible
+          ? new Text({
+              text: props.label || `#${feature.getId()}`,
+              font: '13px "JetBrains Mono", monospace',
+              fill: new Fill({ color: "#FFFFFF" }),
+              stroke: new Stroke({ color: "#000000", width: 3 }),
+            })
+          : undefined,
+      });
+    });
+
+    layer.setVisible(heapsVisible);
+    layer.setOpacity(heapsOpacity);
+    layer.changed();
+  }, [
+    selectedHeapId,
+    mergeSelection,
+    heapsVisible,
+    heapsOpacity,
+    labelsVisible,
+  ]);
+
+  // Select/hover interactions — only when in select/delete/merge mode
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = heapLayerRef.current;
+    if (!map || !layer) return;
+
+    // Remove old interactions
+    if (selectRef.current) {
+      map.removeInteraction(selectRef.current);
+      selectRef.current = null;
+    }
+    if (hoverRef.current) {
+      map.removeInteraction(hoverRef.current);
+      hoverRef.current = null;
+    }
+
+    const needsSelect =
+      activeTool === "select" ||
+      activeTool === "delete" ||
+      activeTool === "merge";
+
+    if (!needsSelect) return;
+
+    const selectInteraction = new Select({
+      condition: click,
+      layers: [layer],
+      style: null, // Use layer style
+    });
+    selectInteraction.on("select", (e) => {
+      const selected = e.selected[0];
+      const heapId = selected
+        ? (selected.getId() as number)
+        : null;
+
+      if (activeTool === "merge" && heapId != null) {
+        toggleMergeSelection(heapId);
+        selectInteraction.getFeatures().clear();
+      } else {
+        selectHeap(heapId);
+      }
+    });
+    map.addInteraction(selectInteraction);
+    selectRef.current = selectInteraction;
+
+    // Hover
+    const hoverInteraction = new Select({
+      condition: pointerMove,
+      layers: [layer],
+      style: (feature: FeatureLike) => {
+        const props = feature.getProperties();
+        const color = getColor(props.category);
+        return new Style({
+          stroke: new Stroke({ color, width: 2.5 }),
+          fill: new Fill({ color: hexToRgba(color, 0.3) }),
+          text: labelsVisible
+            ? new Text({
+                text: props.label || `#${feature.getId()}`,
+                font: '13px "JetBrains Mono", monospace',
+                fill: new Fill({ color: "#FFFFFF" }),
+                stroke: new Stroke({ color: "#000000", width: 3 }),
+              })
+            : undefined,
+        });
+      },
+    });
+    map.addInteraction(hoverInteraction);
+    hoverRef.current = hoverInteraction;
+
+    return () => {
+      if (selectRef.current) {
+        map.removeInteraction(selectRef.current);
+        selectRef.current = null;
+      }
+      if (hoverRef.current) {
+        map.removeInteraction(hoverRef.current);
+        hoverRef.current = null;
+      }
+    };
+  }, [
+    mapReady,
+    activeTool,
+    selectHeap,
+    toggleMergeSelection,
+    labelsVisible,
+  ]);
 
   return (
     <div className="relative h-full w-full">
       <div ref={mapDivRef} className="h-full w-full bg-evlos-900" />
+
+      {/* Editing toolbar */}
+      {mapReady && (
+        <div className="absolute top-4 left-4 z-10">
+          <EditingToolbar
+            disabled={!mapReady}
+            mergeDisabled={mergeSelection.length < 2}
+          />
+        </div>
+      )}
+
+      {/* OL editing interactions */}
+      {mapReady && mapRef.current && (
+        <PolygonEditor
+          map={mapRef.current}
+          source={heapSourceRef.current}
+          surveyId={surveyId}
+        />
+      )}
+
+      {/* Delete dialog + merge handler */}
+      {mapReady && <EditingActions surveyId={surveyId} />}
+
+      {/* UTM coordinates display */}
       {coordinate && (
         <div className="absolute bottom-2 right-2 rounded bg-card/90 px-3 py-1.5 text-xs font-mono shadow-md backdrop-blur border border-border">
           E: {coordinate[0].toFixed(2)} m &middot; N:{" "}
