@@ -49,5 +49,13 @@ export function setupMockApi(overrides?: {
       openFile: vi.fn().mockResolvedValue(null),
       saveFile: vi.fn().mockResolvedValue(null),
     },
+    editing: {
+      createHeap: vi.fn().mockResolvedValue({ id: 999 }),
+      recomputeHeap: vi.fn().mockResolvedValue({ id: 1 }),
+      deleteHeap: vi.fn().mockResolvedValue({ ok: true }),
+      splitHeap: vi.fn().mockResolvedValue([]),
+      mergeHeaps: vi.fn().mockResolvedValue({ id: 1 }),
+      restoreSnapshot: vi.fn().mockResolvedValue([]),
+    },
   };
 }

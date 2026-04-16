@@ -91,6 +91,50 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('shell:showItemInFolder', fullPath),
   },
 
+  editing: {
+    /** Create a new heap from a drawn polygon. */
+    createHeap: (args: {
+      surveyId: number;
+      polygonGeoJSON: Record<string, unknown>;
+    }): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('editing:createHeap', args),
+
+    /** Recompute metrics for an existing heap after polygon modification. */
+    recomputeHeap: (args: {
+      heapId: number;
+      polygonGeoJSON: Record<string, unknown>;
+      surveyId: number;
+    }): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('editing:recomputeHeap', args),
+
+    /** Delete a heap by ID. */
+    deleteHeap: (args: { heapId: number }): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('editing:deleteHeap', args),
+
+    /** Split a heap using a cutting line. Returns new heaps. */
+    splitHeap: (args: {
+      heapId: number;
+      lineGeoJSON: Record<string, unknown>;
+      surveyId: number;
+    }): Promise<Record<string, unknown>[]> =>
+      ipcRenderer.invoke('editing:splitHeap', args),
+
+    /** Merge multiple heaps into one. Returns merged heap. */
+    mergeHeaps: (args: {
+      heapIds: number[];
+      surveyId: number;
+    }): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('editing:mergeHeaps', args),
+
+    /** Restore a snapshot of heaps for undo/redo. */
+    restoreSnapshot: (args: {
+      surveyId: number;
+      deleteHeapIds: number[];
+      heaps: Array<Record<string, unknown>>;
+    }): Promise<Record<string, unknown>[]> =>
+      ipcRenderer.invoke('editing:restoreSnapshot', args),
+  },
+
   tiles: {
     /** Get the base URL of the tile server. */
     getBaseUrl: (): Promise<string> => ipcRenderer.invoke('tiles:getBaseUrl'),

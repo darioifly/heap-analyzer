@@ -72,6 +72,32 @@ declare global {
           defaultPath?: string;
         }) => Promise<string | null>;
       };
+      editing: {
+        createHeap: (args: {
+          surveyId: number;
+          polygonGeoJSON: Record<string, unknown>;
+        }) => Promise<Record<string, unknown>>;
+        recomputeHeap: (args: {
+          heapId: number;
+          polygonGeoJSON: Record<string, unknown>;
+          surveyId: number;
+        }) => Promise<Record<string, unknown>>;
+        deleteHeap: (args: { heapId: number }) => Promise<{ ok: boolean }>;
+        splitHeap: (args: {
+          heapId: number;
+          lineGeoJSON: Record<string, unknown>;
+          surveyId: number;
+        }) => Promise<Record<string, unknown>[]>;
+        mergeHeaps: (args: {
+          heapIds: number[];
+          surveyId: number;
+        }) => Promise<Record<string, unknown>>;
+        restoreSnapshot: (args: {
+          surveyId: number;
+          deleteHeapIds: number[];
+          heaps: Array<Record<string, unknown>>;
+        }) => Promise<Record<string, unknown>[]>;
+      };
     };
   }
 }

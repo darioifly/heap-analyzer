@@ -1,6 +1,7 @@
 import { ipcMain, dialog, shell } from 'electron';
 import { PythonBridge } from './python-bridge';
 import type { DatabaseService } from '../database/db';
+import { setupEditingHandlers } from './editing-handlers';
 
 let bridge: PythonBridge | null = null;
 
@@ -10,6 +11,7 @@ export function setupIpcHandlers(dbService: DatabaseService): void {
   setupDbHandlers(dbService);
   setupDialogHandlers();
   setupShellHandlers();
+  setupEditingHandlers(dbService);
 }
 
 // ---------------------------------------------------------------------------

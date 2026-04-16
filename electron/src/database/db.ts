@@ -227,6 +227,19 @@ export class DatabaseService {
     return (this.db.prepare('SELECT * FROM heaps WHERE id = ?').get(id) as Heap) ?? null;
   }
 
+  deleteHeap(id: number): void {
+    this.db.prepare('DELETE FROM heaps WHERE id = ?').run(id);
+  }
+
+  deleteHeapsBySurvey(surveyId: number): void {
+    this.db.prepare('DELETE FROM heaps WHERE survey_id = ?').run(surveyId);
+  }
+
+  /** Get the underlying database instance for raw transactions. */
+  getDb(): Database.Database {
+    return this.db;
+  }
+
   bulkCreateHeaps(heaps: Omit<Heap, 'id' | 'created_at' | 'updated_at'>[]): Heap[] {
     const insert = this.db.prepare(`
       INSERT INTO heaps
