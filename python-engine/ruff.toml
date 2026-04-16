@@ -1,0 +1,9 @@
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "SIM"]
+ignore = ["ANN101", "ANN102"]
+
+[lint.per-file-ignores]
+"src/heap_analyzer/tests/*" = ["ANN", "S101", "E501", "E741"]

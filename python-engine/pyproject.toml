@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heap-analyzer"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "laspy[lazrs]>=2.0",
+    "rasterio>=1.3",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "scikit-image>=0.21",
+    "shapely>=2.0",
+    "geopandas>=0.13",
+    "fiona>=1.9",
+    "matplotlib>=3.7",
+    "reportlab",
+    "click",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+vlm = [
+    "transformers",
+    "torch",
+    "llama-cpp-python",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+
+[project.scripts]
+heap-analyzer = "heap_analyzer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"

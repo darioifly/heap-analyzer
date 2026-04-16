@@ -1,0 +1,34 @@
+{
+  "name": "heap-analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["frontend", "electron"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:electron": "wait-on http://localhost:5173 && npm run start --workspace=electron",
+    "build": "npm run build:frontend && npm run build:electron",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:electron": "npm run build --workspace=electron",
+    "test": "npm run test:frontend && npm run test:python",
+    "test:frontend": "vitest run",
+    "test:python": "cd python-engine && python -m pytest -v",
+    "test:visual": "npx playwright test --config tests/playwright/playwright.config.ts",
+    "lint": "eslint --ext .ts,.tsx frontend/src electron/src",
+    "format": "prettier --write \"frontend/src/**/*.{ts,tsx}\" \"electron/src/**/*.ts\"",
+    "typecheck": "npm run typecheck --workspace=frontend && npm run typecheck --workspace=electron"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@typescript-eslint/eslint-plugin": "^8.13.0",
+    "@typescript-eslint/parser": "^8.13.0",
+    "concurrently": "^9.1.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4",
+    "wait-on": "^8.0.1"
+  }
+}
