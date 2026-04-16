@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Font */
+    font-family: "Space Grotesk", sans-serif;
+
+    /* shadcn/ui color tokens (HSL format) */
+    --background: 220 14% 96%;          /* #F3F4F6 */
+    --foreground: 220 13% 9%;           /* #111827 */
+    --card: 0 0% 100%;                  /* #FFFFFF */
+    --card-foreground: 220 13% 9%;      /* #111827 */
+    --popover: 0 0% 100%;              /* #FFFFFF */
+    --popover-foreground: 220 13% 9%;   /* #111827 */
+    --primary: 220 28% 32%;            /* #3B4967 — evlos-600 */
+    --primary-foreground: 0 0% 100%;    /* #FFFFFF */
+    --secondary: 220 14% 96%;          /* #F3F4F6 */
+    --secondary-foreground: 220 13% 9%; /* #111827 */
+    --muted: 220 14% 96%;              /* #F3F4F6 */
+    --muted-foreground: 220 9% 46%;     /* #6B7280 */
+    --accent: 220 14% 96%;             /* #F3F4F6 */
+    --accent-foreground: 220 13% 9%;    /* #111827 */
+    --destructive: 0 84% 60%;          /* #EF4444 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;             /* #E5E7EB */
+    --input: 220 13% 91%;              /* #E5E7EB */
+    --ring: 220 28% 32%;               /* #3B4967 — evlos-600 */
+    --radius: 0.5rem;
+
+    /* Custom tokens EVLOS */
+    --evlos-header: 216 26% 24%;       /* #2D384C — evlos-700 */
+    --evlos-text-secondary: 220 9% 46%; /* #6B7280 */
+    --evlos-text-tertiary: 220 9% 64%;  /* #9CA3AF */
+  }
+
+  .dark {
+    --background: 216 30% 10%;          /* #101824 — evlos-900 */
+    --foreground: 210 20% 98%;          /* #F9FAFB */
+    --card: 216 28% 17%;               /* #1D283C — evlos-800 */
+    --card-foreground: 210 20% 98%;     /* #F9FAFB */
+    --popover: 216 28% 17%;            /* #1D283C */
+    --popover-foreground: 210 20% 98%;  /* #F9FAFB */
+    --primary: 220 22% 51%;            /* #6575A0 — evlos-400 */
+    --primary-foreground: 0 0% 100%;    /* #FFFFFF */
+    --secondary: 216 26% 24%;          /* #2D384C — evlos-700 */
+    --secondary-foreground: 210 20% 98%;
+    --muted: 216 26% 24%;              /* #2D384C */
+    --muted-foreground: 220 9% 64%;     /* #9CA3AF */
+    --accent: 216 26% 24%;             /* #2D384C */
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 28% 32%;             /* #3B4967 — evlos-600 */
+    --input: 220 28% 32%;              /* #3B4967 */
+    --ring: 220 22% 51%;               /* #6575A0 — evlos-400 */
+
+    --evlos-header: 216 28% 17%;       /* #1D283C — evlos-800 */
+    --evlos-text-secondary: 220 9% 64%; /* #9CA3AF */
+    --evlos-text-tertiary: 220 9% 46%;  /* #6B7280 */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-[hsl(var(--evlos-header))] text-foreground font-sans antialiased;
+    margin: 0;
+    padding: 0;
+  }
+  html, body, #root {
+    height: 100%;
+  }
+  #root {
+    width: 100%;
+  }
+}
