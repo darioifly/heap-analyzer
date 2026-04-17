@@ -31,6 +31,7 @@ export interface Survey {
   tilesPath: string | null;
   ndsmHeatmapPath: string | null;
   baseElevation: number | null;
+  potreePath: string | null;
   createdAt: string;
   updatedAt: string;
 }

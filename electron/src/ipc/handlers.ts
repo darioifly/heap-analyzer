@@ -3,6 +3,7 @@ import { PythonBridge } from './python-bridge';
 import type { DatabaseService } from '../database/db';
 import { setupEditingHandlers } from './editing-handlers';
 import { setupElevationHandlers } from './elevation-handlers';
+import { setupPotreeHandlers } from './potree-handlers';
 
 let bridge: PythonBridge | null = null;
 
@@ -14,6 +15,7 @@ export function setupIpcHandlers(dbService: DatabaseService): void {
   setupShellHandlers();
   setupEditingHandlers(dbService);
   setupElevationHandlers(dbService);
+  setupPotreeHandlers(dbService);
 }
 
 // ---------------------------------------------------------------------------

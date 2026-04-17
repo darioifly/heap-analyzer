@@ -129,6 +129,26 @@ export class TileServer {
       },
     );
 
+    // Serve Potree files: /potree/:surveyId/*
+    this.app.use(
+      '/potree/:surveyId',
+      (req: Request, res: Response, next) => {
+        const surveyId = parseInt(req.params.surveyId as string, 10);
+        if (isNaN(surveyId)) {
+          res.status(400).json({ error: 'Invalid survey ID' });
+          return;
+        }
+
+        const survey = this.dbService.getSurvey(surveyId);
+        if (!survey || !survey.potree_path) {
+          res.status(404).json({ error: 'Potree data not available' });
+          return;
+        }
+
+        express.static(survey.potree_path)(req, res, next);
+      },
+    );
+
     // Serve nDSM heatmap image
     this.app.get(
       '/heatmap/:surveyId.png',

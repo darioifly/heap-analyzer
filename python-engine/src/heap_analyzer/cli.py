@@ -337,6 +337,48 @@ def recompute_all_heaps_cmd(
         sys.exit(1)
 
 
+@main.command("export-pointcloud")
+@click.option("--las", required=True, type=click.Path(exists=True), help="Input LAS/LAZ file")
+@click.option("--output", required=True, type=click.Path(), help="Output directory for Potree files")
+@click.option("--converter-path", default=None, type=click.Path(), help="Custom PotreeConverter path")
+def export_pointcloud_cmd(las: str, output: str, converter_path: str | None) -> None:
+    """Convert LAS/LAZ to Potree 2.0 format."""
+    click.echo(f"[heap-analyzer] export-pointcloud called: las={las}", err=True)
+
+    try:
+        from heap_analyzer.export.pointcloud_export import export_for_potree
+
+        def progress_cb(pct: int, msg: str) -> None:
+            emit_progress("potree_conversion", float(pct), msg)
+
+        result = export_for_potree(
+            las_path=las,
+            output_dir=output,
+            potree_converter_path=converter_path,
+            progress_callback=progress_cb,
+        )
+
+        if result.success:
+            emit_result({
+                "output_dir": result.output_dir,
+                "metadata_path": result.metadata_path,
+                "num_points": result.num_points,
+                "bounds": result.bounds,
+            })
+        else:
+            emit_error("POTREE_CONVERSION_FAILED", result.error or "Unknown error")
+            sys.exit(1)
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("POTREE_CONVERSION_FAILED", str(exc))
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
 @main.command("sample-ground")
 @click.option("--dsm", required=True, type=click.Path(exists=True), help="Path to DSM GeoTIFF")
 @click.option("--polygons-json", required=True, help="JSON array of GeoJSON polygon geometries")

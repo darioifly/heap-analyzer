@@ -87,6 +87,14 @@ declare global {
           per_polygon: Array<{ mean: number | null; std: number | null; num_pixels: number }>;
         }>;
       };
+      potree: {
+        convert: (params: { surveyId: number }) => Promise<Record<string, unknown>>;
+        getStatus: (params: { surveyId: number }) => Promise<{
+          available: boolean;
+          potreePath?: string;
+          metadata?: Record<string, unknown>;
+        }>;
+      };
       editing: {
         createHeap: (args: {
           surveyId: number;

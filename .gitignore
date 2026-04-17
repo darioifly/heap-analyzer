@@ -17,3 +17,6 @@ test-results/
 *.db
 *.sqlite
 test-data/
+
+# PotreeConverter binary (downloaded, not tracked)
+tools/PotreeConverter/

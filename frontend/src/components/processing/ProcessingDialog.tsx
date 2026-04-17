@@ -168,6 +168,13 @@ export function ProcessingDialog({
         );
       }
 
+      // Attempt Potree conversion (non-blocking — skip if PotreeConverter not available)
+      try {
+        await window.api.potree.convert({ surveyId });
+      } catch (potreeErr) {
+        console.warn("Potree conversion skipped or failed:", potreeErr);
+      }
+
       processingStore.complete();
 
       const heapCount = data.heap_metrics?.length ?? 0;

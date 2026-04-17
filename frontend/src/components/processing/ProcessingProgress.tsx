@@ -11,6 +11,7 @@ const PHASE_LABELS: Record<string, string> = {
   segmenting_heaps: "Segmentazione cumuli",
   computing_metrics: "Calcolo volumi e metriche",
   saving_results: "Salvataggio risultati",
+  potree_conversion: "Conversione 3D",
 };
 
 function formatTime(ms: number): string {

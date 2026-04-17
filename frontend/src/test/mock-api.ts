@@ -56,6 +56,10 @@ export function setupMockApi(overrides?: {
         per_polygon: [{ mean: 100.0, std: 0.01, num_pixels: 1000 }],
       }),
     },
+    potree: {
+      convert: vi.fn().mockResolvedValue({}),
+      getStatus: vi.fn().mockResolvedValue({ available: false }),
+    },
     editing: {
       createHeap: vi.fn().mockResolvedValue({ id: 999 }),
       recomputeHeap: vi.fn().mockResolvedValue({ id: 1 }),

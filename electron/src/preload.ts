@@ -156,6 +156,20 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('elevation:sampleGround', args),
   },
 
+  potree: {
+    /** Convert survey LAS to Potree 2.0 format. */
+    convert: (params: { surveyId: number }): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('potree:convert', params),
+
+    /** Check if Potree data is available for a survey. */
+    getStatus: (params: { surveyId: number }): Promise<{
+      available: boolean;
+      potreePath?: string;
+      metadata?: Record<string, unknown>;
+    }> =>
+      ipcRenderer.invoke('potree:getStatus', params),
+  },
+
   tiles: {
     /** Get the base URL of the tile server. */
     getBaseUrl: (): Promise<string> => ipcRenderer.invoke('tiles:getBaseUrl'),
