@@ -7,6 +7,7 @@ import {
   Trash2,
   Undo2,
   Redo2,
+  MapPin,
 } from "lucide-react";
 import {
   Tooltip,
@@ -31,6 +32,7 @@ const TOOLS: ToolButton[] = [
   { tool: "split", icon: Scissors, label: "Dividi cumulo", shortcut: "X" },
   { tool: "merge", icon: GitMerge, label: "Unisci cumuli", shortcut: "U" },
   { tool: "delete", icon: Trash2, label: "Elimina cumulo", shortcut: "Canc" },
+  { tool: "ground-select", icon: MapPin, label: "Seleziona terreno noto", shortcut: "G" },
 ];
 
 interface EditingToolbarProps {

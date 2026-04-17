@@ -7,7 +7,8 @@ export type EditingTool =
   | "modify"
   | "split"
   | "merge"
-  | "delete";
+  | "delete"
+  | "ground-select";
 
 interface HistoryEntry {
   op: "create" | "modify" | "delete" | "split" | "merge";
@@ -27,6 +28,8 @@ interface EditingState {
   redoStack: HistoryEntry[];
   /** IDs of heaps selected for merge (multi-select via Shift+click). */
   mergeSelection: number[];
+  /** Suggested base elevation from ground selection tool (F3.S02). */
+  suggestedBaseElevation: number | null;
 
   setTool: (tool: EditingTool) => void;
   pushHistory: (entry: HistoryEntry) => void;
@@ -37,6 +40,7 @@ interface EditingState {
   clearHistory: (surveyId?: number) => void;
   toggleMergeSelection: (heapId: number) => void;
   clearMergeSelection: () => void;
+  setSuggestedBaseElevation: (value: number | null) => void;
 }
 
 export const useEditingStore = create<EditingState>((set, get) => ({
@@ -44,6 +48,7 @@ export const useEditingStore = create<EditingState>((set, get) => ({
   undoStack: [],
   redoStack: [],
   mergeSelection: [],
+  suggestedBaseElevation: null,
 
   setTool: (tool) => {
     set({ activeTool: tool });
@@ -113,4 +118,6 @@ export const useEditingStore = create<EditingState>((set, get) => ({
   },
 
   clearMergeSelection: () => set({ mergeSelection: [] }),
+
+  setSuggestedBaseElevation: (value) => set({ suggestedBaseElevation: value }),
 }));

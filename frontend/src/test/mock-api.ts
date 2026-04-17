@@ -49,6 +49,13 @@ export function setupMockApi(overrides?: {
       openFile: vi.fn().mockResolvedValue(null),
       saveFile: vi.fn().mockResolvedValue(null),
     },
+    elevation: {
+      recomputeAll: vi.fn().mockResolvedValue({ heaps: [], baseElevation: 100 }),
+      sampleGround: vi.fn().mockResolvedValue({
+        mean_elevation: 100.0, std_elevation: 0.01, num_pixels: 1000,
+        per_polygon: [{ mean: 100.0, std: 0.01, num_pixels: 1000 }],
+      }),
+    },
     editing: {
       createHeap: vi.fn().mockResolvedValue({ id: 999 }),
       recomputeHeap: vi.fn().mockResolvedValue({ id: 1 }),

@@ -3,6 +3,8 @@ import { useHeapStore } from "@/stores/heapStore";
 import { useSurveyStore } from "@/stores/surveyStore";
 import { HeapProperties } from "@/components/heaps/HeapProperties";
 import { SurveySummary } from "@/components/heaps/SurveySummary";
+import { BaseElevationControl } from "@/components/heaps/BaseElevationControl";
+import { Separator } from "@/components/ui/separator";
 
 export function SidebarRight() {
   const selectedHeapId = useHeapStore((s) => s.selectedHeapId);
@@ -22,6 +24,14 @@ export function SidebarRight() {
           Proprietà
         </h2>
       </div>
+
+      {/* Base Elevation Control — always visible when survey is loaded */}
+      {survey && selectedSurveyId && survey.processingStatus === "completed" && (
+        <>
+          <BaseElevationControl survey={survey} heaps={heaps} />
+          <Separator />
+        </>
+      )}
 
       {selectedHeap ? (
         <HeapProperties heap={selectedHeap} />

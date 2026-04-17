@@ -62,6 +62,10 @@ export function useEditingShortcuts(enabled = true): void {
           e.preventDefault();
           store.setTool("merge");
           break;
+        case "G":
+          e.preventDefault();
+          store.setTool("ground-select");
+          break;
         case "DELETE":
         case "BACKSPACE":
           e.preventDefault();

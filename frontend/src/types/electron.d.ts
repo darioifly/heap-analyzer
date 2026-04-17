@@ -72,6 +72,21 @@ declare global {
           defaultPath?: string;
         }) => Promise<string | null>;
       };
+      elevation: {
+        recomputeAll: (args: {
+          surveyId: number;
+          baseElevation: number;
+        }) => Promise<{ heaps: Record<string, unknown>[]; baseElevation: number }>;
+        sampleGround: (args: {
+          surveyId: number;
+          polygonsGeoJSON: Record<string, unknown>[];
+        }) => Promise<{
+          mean_elevation: number;
+          std_elevation: number;
+          num_pixels: number;
+          per_polygon: Array<{ mean: number | null; std: number | null; num_pixels: number }>;
+        }>;
+      };
       editing: {
         createHeap: (args: {
           surveyId: number;
