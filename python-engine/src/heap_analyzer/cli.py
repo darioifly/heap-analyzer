@@ -299,6 +299,68 @@ def merge_polygons_cmd(polygons_json: str) -> None:
         sys.exit(1)
 
 
+@main.command("recompute-all-heaps")
+@click.option("--ndsm", required=True, type=click.Path(exists=True), help="Path to nDSM GeoTIFF")
+@click.option("--heaps-json", required=True, help="JSON array of {id, polygon_geojson}")
+@click.option("--base-elevation", required=True, type=float, help="New base elevation in meters")
+@click.option("--original-base-elevation", default=None, type=float, help="Original base elevation")
+@click.option(
+    "--config", "config_arg", default=None,
+    help="ProcessingConfig JSON string or file path",
+)
+def recompute_all_heaps_cmd(
+    ndsm: str, heaps_json: str,
+    base_elevation: float, original_base_elevation: float | None,
+    config_arg: str | None,
+) -> None:
+    """Recompute metrics for all heaps with a new base elevation. Emits JSON Lines."""
+    click.echo(f"[heap-analyzer] recompute-all-heaps called: ndsm={ndsm}", err=True)
+
+    try:
+        cfg = _parse_config(config_arg)
+        heaps = json.loads(heaps_json)
+
+        from heap_analyzer.processing.volume import recompute_all_heaps
+
+        emit_progress("recompute", 0.0, "Ricalcolo volumi...")
+        results = recompute_all_heaps(ndsm, heaps, base_elevation, cfg, original_base_elevation)
+        emit_progress("recompute", 100.0, "Ricalcolo completato")
+        emit_result({"heaps": results, "base_elevation": base_elevation})
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("RECOMPUTE_ALL_FAILED", str(exc))
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
+@main.command("sample-ground")
+@click.option("--dsm", required=True, type=click.Path(exists=True), help="Path to DSM GeoTIFF")
+@click.option("--polygons-json", required=True, help="JSON array of GeoJSON polygon geometries")
+def sample_ground_cmd(dsm: str, polygons_json: str) -> None:
+    """Sample DSM elevation within user-drawn ground-reference polygons. Emits JSON Lines."""
+    click.echo(f"[heap-analyzer] sample-ground called: dsm={dsm}", err=True)
+
+    try:
+        from heap_analyzer.processing.ground_sampling import sample_dsm_in_polygons
+
+        polygons = json.loads(polygons_json)
+        result = sample_dsm_in_polygons(dsm, polygons)
+        emit_result(result)
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("GROUND_SAMPLE_FAILED", str(exc))
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
 def _parse_config(config_arg: str | None) -> ProcessingConfig:
     """Parse ProcessingConfig from --config argument.
 

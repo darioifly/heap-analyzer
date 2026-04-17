@@ -407,3 +407,102 @@ def recompute_single_heap(
         bbox_max_e=bounds[2],
         bbox_max_n=bounds[3],
     )
+
+
+def recompute_all_heaps(
+    ndsm_path: str | Path,
+    heaps: list[dict],  # type: ignore[type-arg]
+    base_elevation: float,
+    config: ProcessingConfig,
+    original_base_elevation: float | None = None,
+) -> list[dict]:  # type: ignore[type-arg]
+    """Recompute metrics for multiple heaps with a shared base elevation.
+
+    Opens the nDSM once, adjusts heights for the base-elevation delta,
+    iterates over heaps, returns list of {id, metrics: dict} dicts.
+
+    The nDSM was computed as DSM - DTM with the original base. When the
+    user overrides the base elevation by delta, nDSM values are adjusted:
+    nDSM_adjusted = nDSM - (new_base - original_base).
+
+    Used by F3.S02 base-elevation override (global recalc).
+
+    Args:
+        ndsm_path: Path to the survey's nDSM GeoTIFF.
+        heaps: Each dict has 'id' (int) and 'polygon_geojson' (GeoJSON dict).
+        base_elevation: New base elevation in meters.
+        config: Processing config (for height_threshold).
+        original_base_elevation: Original base elevation used to compute
+            the nDSM. If None, assumes same as base_elevation (no adjustment).
+
+    Returns:
+        List of {'id': int, 'metrics': dict} where metrics is HeapMetrics.model_dump().
+    """
+    with rasterio.open(str(ndsm_path)) as src:
+        ndsm = src.read(1).astype(np.float64)
+        transform = src.transform
+        raster_shape = ndsm.shape
+        nodata = src.nodata
+
+    # Clean nDSM: replace nodata with 0, clip negatives
+    if nodata is not None:
+        ndsm[np.isclose(ndsm, nodata)] = 0.0
+
+    # Adjust nDSM for base elevation change: raising base reduces heights
+    if original_base_elevation is not None:
+        delta = base_elevation - original_base_elevation
+        if abs(delta) > 1e-6:
+            ndsm = ndsm - delta
+
+    ndsm = np.clip(ndsm, 0.0, None)
+
+    results: list[dict] = []  # type: ignore[type-arg]
+    for h in heaps:
+        geom = shapely_shape(h["polygon_geojson"])
+        if not geom.is_valid:
+            geom = geom.buffer(0)
+        if geom.is_empty:
+            logger.warning("Heap %s: empty geometry, skipping", h["id"])
+            continue
+
+        mask = rasterio.features.rasterize(
+            [(geom, 1)],
+            out_shape=raster_shape,
+            transform=transform,
+            fill=0,
+            dtype=np.uint8,
+        ).astype(bool)
+
+        if not mask.any():
+            logger.warning("Heap %s: polygon does not intersect nDSM, skipping", h["id"])
+            continue
+
+        metrics = _compute_metrics_for_mask(
+            ndsm, mask, transform, base_elevation, config.height_threshold
+        )
+
+        bounds = geom.bounds
+        full_metrics = HeapMetrics(
+            heap_id=metrics.heap_id,
+            polygon_geojson=h["polygon_geojson"],
+            volume_m3=metrics.volume_m3,
+            planimetric_area_m2=metrics.planimetric_area_m2,
+            surface_area_m2=metrics.surface_area_m2,
+            max_height_m=metrics.max_height_m,
+            mean_height_m=metrics.mean_height_m,
+            base_elevation_m=base_elevation,
+            centroid_e=metrics.centroid_e,
+            centroid_n=metrics.centroid_n,
+            bbox_min_e=bounds[0],
+            bbox_min_n=bounds[1],
+            bbox_max_e=bounds[2],
+            bbox_max_n=bounds[3],
+        )
+        results.append({"id": h["id"], "metrics": full_metrics.model_dump()})
+
+    logger.debug(
+        "Recomputed %d heaps with base_elevation=%.2f",
+        len(results),
+        base_elevation,
+    )
+    return results
