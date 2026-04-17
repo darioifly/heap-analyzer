@@ -31,7 +31,7 @@ describe("SurveyList", () => {
           id: 1, projectId: 1, surveyDate: "2026-01-15", operator: "Mario Rossi",
           lasPath: "/test.las", tiffPath: "/test.tif", processingParams: null,
           processingStatus: "completed" as const, dsmPath: null, dtmPath: null,
-          ndsmPath: null, labelMapPath: null, tilesPath: null, ndsmHeatmapPath: null,
+          ndsmPath: null, labelMapPath: null, tilesPath: null, ndsmHeatmapPath: null, baseElevation: null,
           createdAt: "", updatedAt: "",
         },
       ],

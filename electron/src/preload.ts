@@ -135,6 +135,27 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('editing:restoreSnapshot', args),
   },
 
+  elevation: {
+    /** Recompute all heaps with a new base elevation. */
+    recomputeAll: (args: {
+      surveyId: number;
+      baseElevation: number;
+    }): Promise<{ heaps: Record<string, unknown>[]; baseElevation: number }> =>
+      ipcRenderer.invoke('elevation:recomputeAll', args),
+
+    /** Sample DSM elevation within ground-reference polygons. */
+    sampleGround: (args: {
+      surveyId: number;
+      polygonsGeoJSON: Record<string, unknown>[];
+    }): Promise<{
+      mean_elevation: number;
+      std_elevation: number;
+      num_pixels: number;
+      per_polygon: Array<{ mean: number | null; std: number | null; num_pixels: number }>;
+    }> =>
+      ipcRenderer.invoke('elevation:sampleGround', args),
+  },
+
   tiles: {
     /** Get the base URL of the tile server. */
     getBaseUrl: (): Promise<string> => ipcRenderer.invoke('tiles:getBaseUrl'),

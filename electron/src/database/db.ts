@@ -32,6 +32,7 @@ export interface Survey {
   label_map_path: string | null;
   tiles_path: string | null;
   ndsm_heatmap_path: string | null;
+  base_elevation: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -91,6 +92,9 @@ function migrateSchema(db: Database.Database): void {
   }
   if (!colNames.has('ndsm_heatmap_path')) {
     db.exec('ALTER TABLE surveys ADD COLUMN ndsm_heatmap_path TEXT');
+  }
+  if (!colNames.has('base_elevation')) {
+    db.exec('ALTER TABLE surveys ADD COLUMN base_elevation REAL');
   }
 }
 
@@ -153,12 +157,12 @@ export class DatabaseService {
         (project_id, survey_date, operator, las_path, tiff_path,
          processing_params, processing_status,
          dsm_path, dtm_path, ndsm_path, label_map_path,
-         tiles_path, ndsm_heatmap_path)
+         tiles_path, ndsm_heatmap_path, base_elevation)
       VALUES
         (@project_id, @survey_date, @operator, @las_path, @tiff_path,
          @processing_params, @processing_status,
          @dsm_path, @dtm_path, @ndsm_path, @label_map_path,
-         @tiles_path, @ndsm_heatmap_path)
+         @tiles_path, @ndsm_heatmap_path, @base_elevation)
     `);
     const info = stmt.run(data);
     return this.db

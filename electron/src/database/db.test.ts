@@ -92,6 +92,7 @@ describe('DatabaseService — Surveys (FK cascade)', () => {
       label_map_path: null,
       tiles_path: null,
       ndsm_heatmap_path: null,
+      base_elevation: null,
     });
 
     expect(survey.project_id).toBe(project.id);
@@ -122,6 +123,7 @@ describe('DatabaseService — Surveys (FK cascade)', () => {
       label_map_path: null,
       tiles_path: null,
       ndsm_heatmap_path: null,
+      base_elevation: null,
     });
 
     service.deleteProject(project.id);
@@ -153,6 +155,7 @@ describe('DatabaseService — Heaps (FK cascade)', () => {
       label_map_path: null,
       tiles_path: null,
       ndsm_heatmap_path: null,
+      base_elevation: null,
     });
 
     const heapData = {
@@ -210,7 +213,7 @@ describe('DatabaseService — Schema compliance', () => {
 
   it('heap has all SPEC columns', () => {
     const project = service.createProject({ name: 'P', location: null, crs: 'EPSG:32632', notes: null, material_categories: null });
-    const survey = service.createSurvey({ project_id: project.id, survey_date: '2026-04-01', operator: null, las_path: '/x.las', tiff_path: '/x.tif', processing_params: null, processing_status: 'pending', dsm_path: null, dtm_path: null, ndsm_path: null, label_map_path: null, tiles_path: null, ndsm_heatmap_path: null });
+    const survey = service.createSurvey({ project_id: project.id, survey_date: '2026-04-01', operator: null, las_path: '/x.las', tiff_path: '/x.tif', processing_params: null, processing_status: 'pending', dsm_path: null, dtm_path: null, ndsm_path: null, label_map_path: null, tiles_path: null, ndsm_heatmap_path: null, base_elevation: null });
     const heap = service.createHeap({ survey_id: survey.id, label: 'h1', polygon: '{}', volume: 100, planimetric_area: 50, surface_area: 55, max_height: 3, mean_height: 1.5, base_elevation: 100, centroid_e: 500000, centroid_n: 5000000, bbox_min_e: 499990, bbox_min_n: 4999990, bbox_max_e: 500010, bbox_max_n: 5000010, material_category: null, material_confidence: null, is_manually_confirmed: 0, is_excluded: 0 });
 
     const requiredCols = ['id','survey_id','label','polygon','volume','planimetric_area','surface_area','max_height','mean_height','base_elevation','centroid_e','centroid_n','bbox_min_e','bbox_min_n','bbox_max_e','bbox_max_n','material_category','material_confidence','is_manually_confirmed','is_excluded','created_at','updated_at'];
