@@ -1,14 +1,20 @@
 import { Map } from "lucide-react";
 import { useSurveyStore } from "@/stores/surveyStore";
+import { useUiStore } from "@/stores/uiStore";
 import { MapView } from "@/components/map/MapView";
+import { PotreeView } from "@/components/three/PotreeView";
 
 export function Viewport() {
   const selectedSurveyId = useSurveyStore((s) => s.selectedSurveyId);
   const survey = useSurveyStore((s) =>
     s.surveys.find((sv) => sv.id === s.selectedSurveyId),
   );
+  const viewMode = useUiStore((s) => s.viewMode);
 
   if (selectedSurveyId && survey?.processingStatus === "completed") {
+    if (viewMode === "3d") {
+      return <PotreeView surveyId={selectedSurveyId} />;
+    }
     return <MapView surveyId={selectedSurveyId} />;
   }
 

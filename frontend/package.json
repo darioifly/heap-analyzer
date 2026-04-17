@@ -31,6 +31,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.8.0",
     "ol": "^10.9.0",
+    "potree-core": "^2.0.15",
     "proj4": "^2.20.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -38,6 +39,7 @@
     "react-resizable-panels": "^4.10.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
+    "three": "^0.184.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.12"
   },
@@ -50,6 +52,7 @@
     "@types/proj4": "^2.19.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.184.0",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.5.0",
     "happy-dom": "^20.9.0",
