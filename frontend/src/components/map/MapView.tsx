@@ -20,6 +20,7 @@ import { useEditingStore } from "@/stores/editingStore";
 import { useMapStore } from "@/stores/mapStore";
 import { EditingToolbar } from "./EditingToolbar";
 import { PolygonEditor } from "./PolygonEditor";
+import { GroundSelectionTool } from "./GroundSelectionTool";
 import { EditingActions } from "./EditingActions";
 import { useEditingShortcuts } from "@/hooks/useEditingShortcuts";
 
@@ -343,6 +344,14 @@ export function MapView({ surveyId }: MapViewProps) {
         <PolygonEditor
           map={mapRef.current}
           source={heapSourceRef.current}
+          surveyId={surveyId}
+        />
+      )}
+
+      {/* Ground selection tool (F3.S02) */}
+      {mapReady && mapRef.current && (
+        <GroundSelectionTool
+          map={mapRef.current}
           surveyId={surveyId}
         />
       )}
