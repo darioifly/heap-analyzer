@@ -87,6 +87,14 @@ declare global {
           per_polygon: Array<{ mean: number | null; std: number | null; num_pixels: number }>;
         }>;
       };
+      crossSection: {
+        create: (args: { surveyId: number; lineGeoJSON: string; label?: string }) => Promise<Record<string, unknown>>;
+        list: (args: { surveyId: number }) => Promise<Record<string, unknown>[]>;
+        get: (args: { id: number }) => Promise<Record<string, unknown>>;
+        update: (args: { id: number; patch: { label?: string; band_width?: number } }) => Promise<Record<string, unknown>>;
+        delete: (args: { id: number }) => Promise<{ ok: boolean }>;
+        recompute: (args: { id: number }) => Promise<Record<string, unknown>>;
+      };
       potree: {
         convert: (params: { surveyId: number }) => Promise<Record<string, unknown>>;
         getStatus: (params: { surveyId: number }) => Promise<{

@@ -156,6 +156,21 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('elevation:sampleGround', args),
   },
 
+  crossSection: {
+    create: (args: { surveyId: number; lineGeoJSON: string; label?: string }): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('crossSection:create', args),
+    list: (args: { surveyId: number }): Promise<Record<string, unknown>[]> =>
+      ipcRenderer.invoke('crossSection:list', args),
+    get: (args: { id: number }): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('crossSection:get', args),
+    update: (args: { id: number; patch: { label?: string; band_width?: number } }): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('crossSection:update', args),
+    delete: (args: { id: number }): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('crossSection:delete', args),
+    recompute: (args: { id: number }): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('crossSection:recompute', args),
+  },
+
   potree: {
     /** Convert survey LAS to Potree 2.0 format. */
     convert: (params: { surveyId: number }): Promise<Record<string, unknown>> =>

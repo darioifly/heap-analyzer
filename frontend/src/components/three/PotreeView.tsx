@@ -15,6 +15,7 @@ import { Potree, PointCloudOctree, PointColorType, PointSizeType, PointShape } f
 import { useUiStore } from "@/stores/uiStore";
 import { useHeapStore } from "@/stores/heapStore";
 import { useSurveyStore } from "@/stores/surveyStore";
+import { useCrossSectionStore } from "@/stores/crossSectionStore";
 import { Toolbar3D } from "./Toolbar3D";
 import { applyCameraPreset, centerOnHeap, type BoundingBox3D } from "./cameraPresets";
 import type { Heap } from "@/types";
@@ -57,6 +58,10 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
   const heaps = useHeapStore((s) => s.heaps);
   const selectedHeapId = useHeapStore((s) => s.selectedHeapId);
   const selectHeap = useHeapStore((s) => s.select);
+
+  const selectedSectionId = useCrossSectionStore((s) => s.selectedId);
+  const sectionSections = useCrossSectionStore((s) => s.sections);
+  const sectionPlaneRef = useRef<THREE.Group | null>(null);
 
   const colorMode = useUiStore((s) => s.colorMode);
   const showBasePlane = useUiStore((s) => s.showBasePlane);
@@ -142,6 +147,13 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         disposeGroup(heapOverlayGroupRef.current);
         scene.remove(heapOverlayGroupRef.current);
         heapOverlayGroupRef.current = null;
+      }
+
+      // Dispose section plane
+      if (sectionPlaneRef.current) {
+        disposeGroup(sectionPlaneRef.current);
+        scene.remove(sectionPlaneRef.current);
+        sectionPlaneRef.current = null;
       }
 
       // Dispose all remaining scene objects
@@ -393,7 +405,80 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
     }
   }, [centerOnSelectionRequested, selectedHeapId, heaps]);
 
-  // ——— 9. Resize observer ———
+  // ——— 9. 3D section plane for selected cross section ———
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    // Remove old plane
+    if (sectionPlaneRef.current) {
+      disposeGroup(sectionPlaneRef.current);
+      scene.remove(sectionPlaneRef.current);
+      sectionPlaneRef.current = null;
+    }
+
+    if (!selectedSectionId || !boundsRef.current || isLoading) return;
+
+    const section = sectionSections.find((s) => s.id === selectedSectionId);
+    if (!section) return;
+
+    try {
+      const geom = JSON.parse(section.lineGeoJSON);
+      const coords = geom.coordinates as number[][];
+      if (!coords || coords.length < 2) return;
+
+      const [x1, y1] = coords[0];
+      const [x2, y2] = coords[coords.length - 1];
+      const lineLen = Math.hypot(x2 - x1, y2 - y1);
+      if (lineLen < 0.1) return;
+
+      const bounds = boundsRef.current;
+      const baseZ = survey?.baseElevation ?? bounds.min[2];
+      const topZ = bounds.max[2] + 2;
+      const planeHeight = topZ - baseZ;
+
+      // Build a vertical rectangle along the line
+      const cx = (x1 + x2) / 2;
+      const cy = (y1 + y2) / 2;
+      const bearing = Math.atan2(y2 - y1, x2 - x1);
+
+      const planeGeom = new THREE.PlaneGeometry(lineLen, planeHeight);
+      const planeMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.2,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const planeMesh = new THREE.Mesh(planeGeom, planeMat);
+
+      // PlaneGeometry faces +Z by default. We want it vertical along the line.
+      // Rotate to stand upright: 90° around X axis
+      planeMesh.rotation.x = Math.PI / 2;
+      // Rotate to align with line bearing
+      planeMesh.rotation.z = bearing;
+      // Position at center of line, at mid height
+      planeMesh.position.set(cx, cy, baseZ + planeHeight / 2);
+
+      // Outline
+      const outlineGeom = new THREE.EdgesGeometry(planeGeom);
+      const outlineMat = new THREE.LineBasicMaterial({ color: 0xf59e0b });
+      const outline = new THREE.LineSegments(outlineGeom, outlineMat);
+      outline.rotation.x = Math.PI / 2;
+      outline.rotation.z = bearing;
+      outline.position.set(cx, cy, baseZ + planeHeight / 2);
+
+      const group = new THREE.Group();
+      group.add(planeMesh);
+      group.add(outline);
+      scene.add(group);
+      sectionPlaneRef.current = group;
+    } catch {
+      // Invalid GeoJSON, skip
+    }
+  }, [selectedSectionId, sectionSections, isLoading, survey?.baseElevation]);
+
+  // ——— 10. Resize observer ———
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;

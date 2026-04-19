@@ -56,6 +56,14 @@ export function setupMockApi(overrides?: {
         per_polygon: [{ mean: 100.0, std: 0.01, num_pixels: 1000 }],
       }),
     },
+    crossSection: {
+      create: vi.fn().mockResolvedValue({ id: 1 }),
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue({}),
+      delete: vi.fn().mockResolvedValue({ ok: true }),
+      recompute: vi.fn().mockResolvedValue({}),
+    },
     potree: {
       convert: vi.fn().mockResolvedValue({}),
       getStatus: vi.fn().mockResolvedValue({ available: false }),

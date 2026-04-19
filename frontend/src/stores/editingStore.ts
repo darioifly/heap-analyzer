@@ -8,7 +8,8 @@ export type EditingTool =
   | "split"
   | "merge"
   | "delete"
-  | "ground-select";
+  | "ground-select"
+  | "cross-section";
 
 interface HistoryEntry {
   op: "create" | "modify" | "delete" | "split" | "merge";

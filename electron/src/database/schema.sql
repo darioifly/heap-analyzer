@@ -64,6 +64,22 @@ CREATE TABLE IF NOT EXISTS comparisons (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS cross_sections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  survey_id INTEGER NOT NULL REFERENCES surveys(id) ON DELETE CASCADE,
+  label TEXT,
+  line_geojson TEXT NOT NULL,
+  profile_json TEXT,
+  section_area REAL,
+  length REAL,
+  max_height REAL,
+  band_width REAL DEFAULT 1.0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_cross_sections_survey ON cross_sections(survey_id);
+
 -- Triggers for updated_at
 CREATE TRIGGER IF NOT EXISTS projects_updated_at
   AFTER UPDATE ON projects
@@ -81,4 +97,10 @@ CREATE TRIGGER IF NOT EXISTS heaps_updated_at
   AFTER UPDATE ON heaps
 BEGIN
   UPDATE heaps SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS cross_sections_updated_at
+  AFTER UPDATE ON cross_sections
+BEGIN
+  UPDATE cross_sections SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;

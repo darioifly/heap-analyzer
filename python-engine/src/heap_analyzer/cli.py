@@ -403,6 +403,46 @@ def sample_ground_cmd(dsm: str, polygons_json: str) -> None:
         sys.exit(1)
 
 
+@main.command("cross-section")
+@click.option("--dsm", required=True, type=click.Path(exists=True), help="Path to DSM GeoTIFF")
+@click.option("--dtm", required=True, type=click.Path(exists=True), help="Path to DTM GeoTIFF")
+@click.option("--line", "line_str", required=True, help="Line coords as JSON or 'x1,y1;x2,y2'")
+@click.option("--spacing", default=None, type=float, help="Sample spacing in meters")
+def cross_section_cmd(dsm: str, dtm: str, line_str: str, spacing: float | None) -> None:
+    """Extract DSM/DTM profile along a line. Emits JSON Lines."""
+    click.echo(f"[heap-analyzer] cross-section called: dsm={dsm}", err=True)
+
+    try:
+        from heap_analyzer.processing.cross_section import extract_profile
+
+        # Parse line: JSON GeoJSON LineString or "x1,y1;x2,y2" format
+        if line_str.strip().startswith("{") or line_str.strip().startswith("["):
+            parsed = json.loads(line_str)
+            if isinstance(parsed, dict):
+                coords = [(c[0], c[1]) for c in parsed["coordinates"]]
+            else:
+                coords = [(c[0], c[1]) for c in parsed]
+        else:
+            coords = []
+            for seg in line_str.split(";"):
+                x, y = seg.split(",")
+                coords.append((float(x.strip()), float(y.strip())))
+
+        emit_progress("cross_section", 0.0, "Estrazione profilo...")
+        result = extract_profile(dsm, dtm, coords, spacing)
+        emit_progress("cross_section", 100.0, "Profilo completato")
+        emit_result(result)
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("CROSS_SECTION_FAILED", str(exc))
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
 def _parse_config(config_arg: str | None) -> ProcessingConfig:
     """Parse ProcessingConfig from --config argument.
 

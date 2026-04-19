@@ -22,7 +22,10 @@ import { EditingToolbar } from "./EditingToolbar";
 import { PolygonEditor } from "./PolygonEditor";
 import { GroundSelectionTool } from "./GroundSelectionTool";
 import { EditingActions } from "./EditingActions";
+import { CrossSectionDrawTool } from "./CrossSectionDrawTool";
+import { CrossSectionLayer } from "./CrossSectionLayer";
 import { useEditingShortcuts } from "@/hooks/useEditingShortcuts";
+import { useCrossSectionStore } from "@/stores/crossSectionStore";
 
 interface TileMetadata {
   crs: string;
@@ -85,10 +88,13 @@ export function MapView({ surveyId }: MapViewProps) {
   // Enable keyboard shortcuts
   useEditingShortcuts(mapReady);
 
-  // Load heaps on mount and when surveyId changes
+  const loadCrossSections = useCrossSectionStore((s) => s.loadForSurvey);
+
+  // Load heaps and cross sections on mount and when surveyId changes
   useEffect(() => {
     loadBySurvey(surveyId);
-  }, [surveyId, loadBySurvey]);
+    loadCrossSections(surveyId);
+  }, [surveyId, loadBySurvey, loadCrossSections]);
 
   // Create map
   useEffect(() => {
@@ -354,6 +360,14 @@ export function MapView({ surveyId }: MapViewProps) {
           map={mapRef.current}
           surveyId={surveyId}
         />
+      )}
+
+      {/* Cross-section tools */}
+      {mapReady && mapRef.current && (
+        <CrossSectionDrawTool map={mapRef.current} />
+      )}
+      {mapReady && mapRef.current && (
+        <CrossSectionLayer map={mapRef.current} />
       )}
 
       {/* Delete dialog + merge handler */}

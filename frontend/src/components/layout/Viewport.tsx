@@ -3,6 +3,7 @@ import { useSurveyStore } from "@/stores/surveyStore";
 import { useUiStore } from "@/stores/uiStore";
 import { MapView } from "@/components/map/MapView";
 import { PotreeView } from "@/components/three/PotreeView";
+import { CrossSectionPanel } from "@/components/charts/CrossSectionPanel";
 
 export function Viewport() {
   const selectedSurveyId = useSurveyStore((s) => s.selectedSurveyId);
@@ -12,10 +13,16 @@ export function Viewport() {
   const viewMode = useUiStore((s) => s.viewMode);
 
   if (selectedSurveyId && survey?.processingStatus === "completed") {
-    if (viewMode === "3d") {
-      return <PotreeView surveyId={selectedSurveyId} />;
-    }
-    return <MapView surveyId={selectedSurveyId} />;
+    return (
+      <div className="relative h-full w-full">
+        {viewMode === "3d" ? (
+          <PotreeView surveyId={selectedSurveyId} />
+        ) : (
+          <MapView surveyId={selectedSurveyId} />
+        )}
+        <CrossSectionPanel />
+      </div>
+    );
   }
 
   return (

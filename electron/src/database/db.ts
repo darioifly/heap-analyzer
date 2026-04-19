@@ -63,6 +63,20 @@ export interface Heap {
   updated_at: string;
 }
 
+export interface CrossSection {
+  id: number;
+  survey_id: number;
+  label: string | null;
+  line_geojson: string;
+  profile_json: string | null;
+  section_area: number | null;
+  length: number | null;
+  max_height: number | null;
+  band_width: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Comparison {
   id: number;
   survey_a_id: number;
@@ -295,5 +309,43 @@ export class DatabaseService {
         'SELECT * FROM comparisons WHERE survey_a_id = ? OR survey_b_id = ? ORDER BY created_at DESC',
       )
       .all(surveyId, surveyId) as Comparison[];
+  }
+
+  // -------------------------------------------------------------------------
+  // Cross Sections
+  // -------------------------------------------------------------------------
+
+  createCrossSection(data: Omit<CrossSection, 'id' | 'created_at' | 'updated_at'>): CrossSection {
+    const stmt = this.db.prepare(`
+      INSERT INTO cross_sections
+        (survey_id, label, line_geojson, profile_json, section_area, length, max_height, band_width)
+      VALUES
+        (@survey_id, @label, @line_geojson, @profile_json, @section_area, @length, @max_height, @band_width)
+    `);
+    const info = stmt.run(data);
+    return this.db.prepare('SELECT * FROM cross_sections WHERE id = ?').get(info.lastInsertRowid) as CrossSection;
+  }
+
+  listCrossSections(surveyId: number): CrossSection[] {
+    return this.db
+      .prepare('SELECT id, survey_id, label, line_geojson, section_area, length, max_height, band_width, created_at, updated_at FROM cross_sections WHERE survey_id = ? ORDER BY created_at DESC')
+      .all(surveyId) as CrossSection[];
+  }
+
+  getCrossSection(id: number): CrossSection | null {
+    return (this.db.prepare('SELECT * FROM cross_sections WHERE id = ?').get(id) as CrossSection) ?? null;
+  }
+
+  updateCrossSection(id: number, data: Partial<Omit<CrossSection, 'id' | 'created_at' | 'updated_at'>>): CrossSection | null {
+    const fields = Object.keys(data)
+      .map((k) => `${k} = @${k}`)
+      .join(', ');
+    if (!fields) return this.getCrossSection(id);
+    this.db.prepare(`UPDATE cross_sections SET ${fields} WHERE id = @id`).run({ ...data, id });
+    return this.getCrossSection(id);
+  }
+
+  deleteCrossSection(id: number): void {
+    this.db.prepare('DELETE FROM cross_sections WHERE id = ?').run(id);
   }
 }

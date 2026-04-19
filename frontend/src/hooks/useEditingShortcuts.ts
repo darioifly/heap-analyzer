@@ -66,6 +66,10 @@ export function useEditingShortcuts(enabled = true): void {
           e.preventDefault();
           store.setTool("ground-select");
           break;
+        case "S":
+          e.preventDefault();
+          store.setTool("cross-section");
+          break;
         case "DELETE":
         case "BACKSPACE":
           e.preventDefault();
