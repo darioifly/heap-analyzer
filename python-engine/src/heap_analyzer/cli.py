@@ -443,6 +443,85 @@ def cross_section_cmd(dsm: str, dtm: str, line_str: str, spacing: float | None) 
         sys.exit(1)
 
 
+
+# ---------------------------------------------------------------------------
+# VLM subcommands
+# ---------------------------------------------------------------------------
+
+@main.group()
+def vlm() -> None:
+    """VLM model management commands (GPU, download, load, unload)."""
+
+
+def _get_models_dir(models_dir: str | None) -> Path:
+    """Resolve the models directory from CLI arg or env var."""
+    import os
+    if models_dir:
+        return Path(models_dir)
+    env_dir = os.environ.get("HEAP_ANALYZER_MODELS_DIR")
+    if env_dir:
+        return Path(env_dir)
+    return Path.home() / ".cache" / "heap-analyzer" / "models"
+
+
+@vlm.command("gpu-info")
+def vlm_gpu_info() -> None:
+    """Report GPU hardware status. Emits JSON Lines."""
+    from heap_analyzer.classification.vlm_service import VLMService
+
+    svc = VLMService(models_dir=_get_models_dir(None))
+    gpu = svc.check_gpu()
+    emit_result(gpu.model_dump())
+
+
+@vlm.command("list-models")
+@click.option("--models-dir", default=None, type=click.Path(), help="Models directory")
+def vlm_list_models(models_dir: str | None) -> None:
+    """List available VLM models with download status. Emits JSON Lines."""
+    from heap_analyzer.classification.vlm_service import VLMService
+
+    svc = VLMService(models_dir=_get_models_dir(models_dir))
+    models = svc.list_available_models()
+    emit_result({"models": [m.model_dump() for m in models]})
+
+
+@vlm.command("is-downloaded")
+@click.option("--model", "model_name", required=True, help="Model short name")
+@click.option("--models-dir", default=None, type=click.Path(), help="Models directory")
+def vlm_is_downloaded(model_name: str, models_dir: str | None) -> None:
+    """Check if a model is downloaded. Emits JSON Lines."""
+    from heap_analyzer.classification.vlm_service import VLMService
+
+    svc = VLMService(models_dir=_get_models_dir(models_dir))
+    downloaded = svc.is_downloaded(model_name)
+    emit_result({"downloaded": downloaded})
+
+
+@vlm.command("download")
+@click.option("--model", "model_name", required=True, help="Model short name")
+@click.option("--models-dir", default=None, type=click.Path(), help="Models directory")
+def vlm_download(model_name: str, models_dir: str | None) -> None:
+    """Download a VLM model. Emits progress JSON Lines."""
+    from heap_analyzer.classification.vlm_service import VLMService
+
+    svc = VLMService(models_dir=_get_models_dir(models_dir))
+
+    from heap_analyzer.classification.vlm_service import DownloadProgress
+
+    def on_progress(p: DownloadProgress) -> None:
+        emit_progress("vlm_download", p.percent, p.message)
+
+    try:
+        svc.download_model(model_name, progress_cb=on_progress)
+        emit_result({"model": model_name, "downloaded": True})
+    except Exception as exc:  # noqa: BLE001
+        emit_error("VLM_DOWNLOAD_FAILED", str(exc))
+        print(f"[heap-analyzer] VLM download error: {exc}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
 def _parse_config(config_arg: str | None) -> ProcessingConfig:
     """Parse ProcessingConfig from --config argument.
 

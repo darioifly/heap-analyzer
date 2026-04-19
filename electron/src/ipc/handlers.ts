@@ -5,6 +5,7 @@ import { setupEditingHandlers } from './editing-handlers';
 import { setupElevationHandlers } from './elevation-handlers';
 import { setupPotreeHandlers } from './potree-handlers';
 import { setupCrossSectionHandlers } from './cross-section-handlers';
+import { setupVlmHandlers } from './vlm-handlers';
 
 let bridge: PythonBridge | null = null;
 
@@ -18,6 +19,7 @@ export function setupIpcHandlers(dbService: DatabaseService): void {
   setupElevationHandlers(dbService);
   setupPotreeHandlers(dbService);
   setupCrossSectionHandlers(dbService);
+  setupVlmHandlers(dbService);
 }
 
 // ---------------------------------------------------------------------------

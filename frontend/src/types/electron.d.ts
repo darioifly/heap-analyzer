@@ -103,6 +103,34 @@ declare global {
           metadata?: Record<string, unknown>;
         }>;
       };
+      vlm: {
+        gpuInfo: () => Promise<{
+          cuda_available: boolean;
+          cuda_version: string | null;
+          device_name: string | null;
+          vram_total_mb: number | null;
+          vram_free_mb: number | null;
+        }>;
+        listModels: () => Promise<Array<{
+          name: string;
+          display_name: string;
+          hf_id: string;
+          vram_required_mb: number;
+          description: string;
+          is_downloaded: boolean;
+          warns_if_insufficient: boolean;
+        }>>;
+        isDownloaded: (params: { modelName: string }) => Promise<boolean>;
+        download: (params: { modelName: string }) => Promise<{ success: boolean }>;
+        cancelDownload: () => Promise<{ success: boolean }>;
+        onDownloadProgress: (callback: (data: {
+          model_name: string;
+          phase: string;
+          percent: number;
+          message: string;
+        }) => void) => void;
+        removeDownloadListeners: () => void;
+      };
       editing: {
         createHeap: (args: {
           surveyId: number;

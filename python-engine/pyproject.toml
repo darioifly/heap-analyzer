@@ -24,9 +24,12 @@ dependencies = [
 
 [project.optional-dependencies]
 vlm = [
-    "transformers",
-    "torch",
-    "llama-cpp-python",
+    "transformers>=4.45.0",
+    "torch>=2.1.0",
+    "huggingface-hub>=0.20.0",
+    "accelerate>=0.25.0",
+    "Pillow>=10.0",
+    "qwen-vl-utils>=0.0.2",
 ]
 dev = [
     "pytest>=7.0",

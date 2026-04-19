@@ -68,6 +68,18 @@ export function setupMockApi(overrides?: {
       convert: vi.fn().mockResolvedValue({}),
       getStatus: vi.fn().mockResolvedValue({ available: false }),
     },
+    vlm: {
+      gpuInfo: vi.fn().mockResolvedValue({
+        cuda_available: false, cuda_version: null, device_name: null,
+        vram_total_mb: null, vram_free_mb: null,
+      }),
+      listModels: vi.fn().mockResolvedValue([]),
+      isDownloaded: vi.fn().mockResolvedValue(false),
+      download: vi.fn().mockResolvedValue({ success: true }),
+      cancelDownload: vi.fn().mockResolvedValue({ success: true }),
+      onDownloadProgress: vi.fn(),
+      removeDownloadListeners: vi.fn(),
+    },
     editing: {
       createHeap: vi.fn().mockResolvedValue({ id: 999 }),
       recomputeHeap: vi.fn().mockResolvedValue({ id: 1 }),

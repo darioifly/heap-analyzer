@@ -209,4 +209,53 @@ contextBridge.exposeInMainWorld('api', {
       defaultPath?: string;
     }): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile', options),
   },
+
+  vlm: {
+    /** Get GPU hardware status. */
+    gpuInfo: (): Promise<{
+      cuda_available: boolean;
+      cuda_version: string | null;
+      device_name: string | null;
+      vram_total_mb: number | null;
+      vram_free_mb: number | null;
+    }> => ipcRenderer.invoke('vlm:gpuInfo'),
+
+    /** List available VLM models with download status. */
+    listModels: (): Promise<Array<{
+      name: string;
+      display_name: string;
+      hf_id: string;
+      vram_required_mb: number;
+      description: string;
+      is_downloaded: boolean;
+      warns_if_insufficient: boolean;
+    }>> => ipcRenderer.invoke('vlm:listModels'),
+
+    /** Check if a model is downloaded. */
+    isDownloaded: (params: { modelName: string }): Promise<boolean> =>
+      ipcRenderer.invoke('vlm:isDownloaded', params),
+
+    /** Download a model. Progress events sent via vlm:downloadProgress. */
+    download: (params: { modelName: string }): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('vlm:download', params),
+
+    /** Cancel an active download. */
+    cancelDownload: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('vlm:cancelDownload'),
+
+    /** Register a callback for download progress events. */
+    onDownloadProgress: (callback: (data: {
+      model_name: string;
+      phase: string;
+      percent: number;
+      message: string;
+    }) => void): void => {
+      ipcRenderer.on('vlm:downloadProgress', (_event, data) => callback(data));
+    },
+
+    /** Remove download progress listeners. */
+    removeDownloadListeners: (): void => {
+      ipcRenderer.removeAllListeners('vlm:downloadProgress');
+    },
+  },
 });

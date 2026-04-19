@@ -5,6 +5,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { useSurveyStore } from "@/stores/surveyStore";
 import { ExportButton } from "@/components/export/ExportButton";
+import { SettingsDialog } from "@/components/settings/SettingsDialog";
 
 export function HeaderBar() {
   const toggleTheme = useUiStore((s) => s.toggleTheme);
@@ -20,6 +21,7 @@ export function HeaderBar() {
   );
 
   const [potreeAvailable, setPotreeAvailable] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedSurveyId || survey?.processingStatus !== "completed") {
@@ -108,10 +110,13 @@ export function HeaderBar() {
           size="icon"
           className="text-white hover:bg-white/10"
           aria-label="Impostazioni"
+          onClick={() => setSettingsOpen(true)}
         >
           <Settings size={20} strokeWidth={1.75} />
         </Button>
       </div>
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </header>
   );
 }
