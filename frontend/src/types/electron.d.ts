@@ -103,6 +103,35 @@ declare global {
           metadata?: Record<string, unknown>;
         }>;
       };
+      comparison: {
+        run: (params: {
+          surveyAId: number;
+          surveyBId: number;
+          iouThreshold?: number;
+          stabilityThreshold?: number;
+        }) => Promise<{ comparisonId: number; result: Record<string, unknown> }>;
+        get: (params: { id: number }) => Promise<{
+          id: number;
+          surveyAId: number;
+          surveyBId: number;
+          results: Record<string, unknown> | null;
+          createdAt: string;
+        } | null>;
+        listForSurvey: (params: { surveyId: number }) => Promise<Array<{
+          id: number;
+          surveyAId: number;
+          surveyBId: number;
+          results: Record<string, unknown> | null;
+          createdAt: string;
+        }>>;
+        onProgress: (callback: (data: {
+          type: string;
+          phase: string;
+          percent: number;
+          message: string;
+        }) => void) => void;
+        removeProgressListeners: () => void;
+      };
       vlm: {
         gpuInfo: () => Promise<{
           cuda_available: boolean;

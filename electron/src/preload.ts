@@ -210,6 +210,52 @@ contextBridge.exposeInMainWorld('api', {
     }): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile', options),
   },
 
+  comparison: {
+    /** Run a comparison between two surveys. Returns comparisonId + result. */
+    run: (params: {
+      surveyAId: number;
+      surveyBId: number;
+      iouThreshold?: number;
+      stabilityThreshold?: number;
+    }): Promise<{ comparisonId: number; result: Record<string, unknown> }> =>
+      ipcRenderer.invoke('comparison:run', params),
+
+    /** Get a comparison by ID. */
+    get: (params: { id: number }): Promise<{
+      id: number;
+      surveyAId: number;
+      surveyBId: number;
+      results: Record<string, unknown> | null;
+      createdAt: string;
+    } | null> =>
+      ipcRenderer.invoke('comparison:get', params),
+
+    /** List comparisons involving a survey. */
+    listForSurvey: (params: { surveyId: number }): Promise<Array<{
+      id: number;
+      surveyAId: number;
+      surveyBId: number;
+      results: Record<string, unknown> | null;
+      createdAt: string;
+    }>> =>
+      ipcRenderer.invoke('comparison:listForSurvey', params),
+
+    /** Register a callback for comparison progress events. */
+    onProgress: (callback: (data: {
+      type: string;
+      phase: string;
+      percent: number;
+      message: string;
+    }) => void): void => {
+      ipcRenderer.on('comparison:progress', (_event, data) => callback(data));
+    },
+
+    /** Remove comparison progress listeners. */
+    removeProgressListeners: (): void => {
+      ipcRenderer.removeAllListeners('comparison:progress');
+    },
+  },
+
   vlm: {
     /** Get GPU hardware status. */
     gpuInfo: (): Promise<{

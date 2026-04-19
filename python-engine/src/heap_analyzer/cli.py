@@ -111,30 +111,148 @@ def validate(las: str, tiff: str) -> None:
 
 @main.command("generate-test-data")
 @click.option("--output", required=True, help="Output directory for test data")
-def generate_test_data(output: str) -> None:
-    """Generate synthetic test dataset with 4 geometric heaps.
+@click.option(
+    "--variant", default="baseline", type=click.Choice(["baseline", "t2"]),
+    help="Dataset variant: baseline (original 4 heaps) or t2 (temporal comparison partner)",
+)
+def generate_test_data(output: str, variant: str) -> None:
+    """Generate synthetic test dataset with geometric heaps.
 
     Produces test.las, test.tif, and ground_truth.json in the output directory.
+    Use --variant t2 to generate the temporal comparison partner dataset.
     """
-    print(f"[heap-analyzer] generate-test-data called: output={output}", file=sys.stderr)
+    print(f"[heap-analyzer] generate-test-data: output={output} variant={variant}", file=sys.stderr)  # noqa: E501
 
     try:
-        from heap_analyzer.test_data_generator import create_test_site
-
         output_dir = Path(output)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        emit_progress("setup", 5.0, "Inizializzazione generatore...")
-        create_test_site(output_dir)
-        emit_progress("complete", 100.0, "Dataset sintetico generato")
+        emit_progress("setup", 5.0, f"Inizializzazione generatore ({variant})...")
+
+        if variant == "t2":
+            from heap_analyzer.test_data_generator import create_test_site_t2
+            create_test_site_t2(output_dir)
+            files = ["test.las", "test.tif", "ground_truth_t2.json"]
+        else:
+            from heap_analyzer.test_data_generator import create_test_site
+            create_test_site(output_dir)
+            files = ["test.las", "test.tif", "ground_truth.json"]
+
+        emit_progress("complete", 100.0, f"Dataset sintetico ({variant}) generato")
         emit_result({
             "output_dir": str(output_dir),
-            "files": ["test.las", "test.tif", "ground_truth.json"],
+            "variant": variant,
+            "files": files,
         })
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001
         emit_error("GENERATOR_ERROR", f"Errore generazione dati: {exc}")
+        sys.exit(1)
+
+
+@main.command("compare")
+@click.option(
+    "--results-a", required=True, type=click.Path(exists=True),
+    help="Path to results.json from survey A",
+)
+@click.option(
+    "--results-b", required=True, type=click.Path(exists=True),
+    help="Path to results.json from survey B",
+)
+@click.option(
+    "--output", default=None, type=click.Path(),
+    help="Output path for match.json (optional)",
+)
+@click.option(
+    "--iou-threshold", default=0.3, type=float,
+    help="Min IoU to match (default 0.3)",
+)
+@click.option(
+    "--stability-threshold", default=0.05, type=float,
+    help="Stability threshold (default 0.05)",
+)
+def compare_cmd(
+    results_a: str,
+    results_b: str,
+    output: str | None,
+    iou_threshold: float,
+    stability_threshold: float,
+) -> None:
+    """Compare heaps between two survey results (spatial matching).
+
+    Reads two results.json files, matches heaps by polygon IoU using
+    the Hungarian algorithm, and emits a MatchResult.
+    """
+    print(f"[heap-analyzer] compare called: A={results_a} B={results_b}", file=sys.stderr)
+
+    try:
+        from heap_analyzer.comparison.config import ComparisonConfig
+        from heap_analyzer.comparison.matcher import HeapRecord, match_heaps
+        from heap_analyzer.processing.volume import HeapMetrics
+
+        emit_progress("compare", 0.0, "Caricamento risultati...")
+
+        # Load results
+        data_a = json.loads(Path(results_a).read_text(encoding="utf-8"))
+        data_b = json.loads(Path(results_b).read_text(encoding="utf-8"))
+
+        metrics_a = [HeapMetrics(**hm) for hm in data_a["heap_metrics"]]
+        metrics_b = [HeapMetrics(**hm) for hm in data_b["heap_metrics"]]
+
+        # Convert to HeapRecords
+        heaps_a = [
+            HeapRecord(
+                heap_id=m.heap_id,
+                polygon_geojson=m.polygon_geojson,
+                volume_m3=m.volume_m3,
+                planimetric_area_m2=m.planimetric_area_m2,
+                max_height_m=m.max_height_m,
+            )
+            for m in metrics_a
+        ]
+        heaps_b = [
+            HeapRecord(
+                heap_id=m.heap_id,
+                polygon_geojson=m.polygon_geojson,
+                volume_m3=m.volume_m3,
+                planimetric_area_m2=m.planimetric_area_m2,
+                max_height_m=m.max_height_m,
+            )
+            for m in metrics_b
+        ]
+
+        config = ComparisonConfig(
+            iou_threshold=iou_threshold,
+            stability_threshold=stability_threshold,
+        )
+
+        emit_progress("compare", 30.0, "Calcolo IoU e matching...")
+        result = match_heaps(heaps_a, heaps_b, config)
+
+        emit_progress("compare", 90.0, "Matching completato")
+
+        result_dict = result.model_dump()
+
+        # Optionally save to file
+        if output:
+            output_path = Path(output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                json.dumps(result_dict, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            print(f"[heap-analyzer] Match result saved: {output_path}", file=sys.stderr)
+
+        emit_result(result_dict)
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("COMPARE_FAILED", f"Errore durante il confronto: {exc}")
+        print(f"[heap-analyzer] ERROR: {exc}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
 

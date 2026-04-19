@@ -68,6 +68,13 @@ export function setupMockApi(overrides?: {
       convert: vi.fn().mockResolvedValue({}),
       getStatus: vi.fn().mockResolvedValue({ available: false }),
     },
+    comparison: {
+      run: vi.fn().mockResolvedValue({ comparisonId: 1, result: {} }),
+      get: vi.fn().mockResolvedValue(null),
+      listForSurvey: vi.fn().mockResolvedValue([]),
+      onProgress: vi.fn(),
+      removeProgressListeners: vi.fn(),
+    },
     vlm: {
       gpuInfo: vi.fn().mockResolvedValue({
         cuda_available: false, cuda_version: null, device_name: null,

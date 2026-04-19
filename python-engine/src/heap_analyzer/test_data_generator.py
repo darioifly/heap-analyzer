@@ -3,11 +3,20 @@
 Creates a LAS point cloud, GeoTIFF ortophoto, and ground_truth.json for a
 simulated 200m × 200m site with 4 geometric heaps of known analytical volumes.
 
+Supports two variants via ``--variant``:
+  - **baseline** (default): the original 4-heap site.
+  - **t2**: a paired temporal variant for comparison testing:
+      - Heap #1 (cone): unchanged (identical geometry).
+      - Heap #2 (hemisphere): grown ~30% (radius 12 → 13.2 m).
+      - Heap #3 (pyramid): decreased ~20% (base 20 → 18.26 m).
+      - Heap #4 (truncated cone): removed entirely.
+      - Heap #5 (small cone): added at (100, 100), r=10 m, h=3 m.
+
 CRS: EPSG:32632 (UTM Zone 32N)
 Origin: E=500000, N=5000000
 Terrain: flat at 100.0 m elevation
 
-Heaps (analytically exact volumes):
+Heaps — baseline (analytically exact volumes):
   1. Cone:           center=(50,50),  r=15m, h=5m  → V=πr²h/3 ≈ 1178.097 m³
   2. Hemisphere:     center=(150,50), r=12m         → V=2πr³/3 ≈ 3619.115 m³
   3. Pyramid:        center=(50,150), base 20×20m, h=6m → V=b²h/3 = 800.0 m³
@@ -58,6 +67,33 @@ CRS_WKT = 'EPSG:32632'
 # Point densities
 TERRAIN_DENSITY = 50   # pts / m²
 HEAP_DENSITY = 200     # pts / m²
+
+# ---------------------------------------------------------------------------
+# T2 variant constants (temporal comparison partner)
+# ---------------------------------------------------------------------------
+
+# Heap #1: unchanged
+T2_CONE_R = CONE_R
+T2_CONE_H = CONE_H
+T2_CONE_VOL = CONE_VOL
+
+# Heap #2: grown ~30% (radius 12 → 13.2 m)
+T2_HEMI_R = 13.2
+T2_HEMI_VOL = 2 * math.pi * T2_HEMI_R**3 / 3  # ≈ 4838.1
+
+# Heap #3: decreased ~20% (base 20 → 18.26 m, same height)
+T2_PYRAMID_BASE = 18.26
+T2_PYRAMID_H = PYRAMID_H
+T2_PYRAMID_VOL = T2_PYRAMID_BASE**2 * T2_PYRAMID_H / 3  # ≈ 667.0
+
+# Heap #4: removed — not present in t2
+
+# Heap #5: added — small cone at (100, 100)
+T2_NEW_CONE_CX = 100.0
+T2_NEW_CONE_CY = 100.0
+T2_NEW_CONE_R = 10.0
+T2_NEW_CONE_H = 3.0
+T2_NEW_CONE_VOL = math.pi * T2_NEW_CONE_R**2 * T2_NEW_CONE_H / 3  # ≈ 314.159
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +214,11 @@ COLORS_RGB = {
     4: (220, 200, 50),  # truncated cone: yellow
 }
 
+COLORS_RGB_T2 = {
+    **COLORS_RGB,
+    5: (200, 50, 200),  # new heap #5: magenta
+}
+
 
 # ---------------------------------------------------------------------------
 # GeoTIFF ortophoto generation
@@ -258,14 +299,26 @@ def _generate_las(
     all_z: np.ndarray,
     all_color: np.ndarray,
     output_path: Path,
+    colors: dict[int, tuple[int, int, int]] | None = None,
 ) -> None:
     """Write a LAS 1.4 point cloud with CRS=EPSG:32632 and RGB colours."""
     import laspy
 
+    cmap = colors or COLORS_RGB
+    default_rgb = (200, 200, 200)
     # Build colour arrays
-    r_vals = np.array([COLORS_RGB[int(c)][0] * 256 for c in all_color], dtype=np.uint16)
-    g_vals = np.array([COLORS_RGB[int(c)][1] * 256 for c in all_color], dtype=np.uint16)
-    b_vals = np.array([COLORS_RGB[int(c)][2] * 256 for c in all_color], dtype=np.uint16)
+    r_vals = np.array(
+        [cmap.get(int(c), default_rgb)[0] * 256 for c in all_color],
+        dtype=np.uint16,
+    )
+    g_vals = np.array(
+        [cmap.get(int(c), default_rgb)[1] * 256 for c in all_color],
+        dtype=np.uint16,
+    )
+    b_vals = np.array(
+        [cmap.get(int(c), default_rgb)[2] * 256 for c in all_color],
+        dtype=np.uint16,
+    )
 
     header = laspy.LasHeader(point_format=2, version='1.4')
     header.offsets = np.array([all_x.min(), all_y.min(), all_z.min()])
@@ -293,8 +346,214 @@ def _generate_las(
 # Public API
 # ---------------------------------------------------------------------------
 
+def create_test_site_t2(output_dir: Path) -> dict[str, object]:
+    """Generate the t2 temporal variant of the synthetic test dataset.
+
+    Same CRS, bounds, and transform as baseline. Differences:
+      - Heap #1 (cone): unchanged.
+      - Heap #2 (hemisphere): grown ~30% (r=13.2 m).
+      - Heap #3 (pyramid): decreased ~20% (base=18.26 m).
+      - Heap #4 (truncated cone): removed.
+      - Heap #5 (small cone): added at (100, 100).
+
+    Args:
+        output_dir: Directory where test.las, test.tif, ground_truth.json are written.
+
+    Returns:
+        Ground truth dictionary (also saved as ground_truth_t2.json).
+    """
+    rng = np.random.default_rng(99)  # different seed for point variation
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    emit_progress("generator_t2", 10.0, "Generazione punti terreno (t2)...")
+    tx, ty, tz, tc = _generate_terrain_points(rng)
+
+    emit_progress("generator_t2", 25.0, "Generazione cumulo 1 (cono, invariato)...")
+    h1x, h1y, h1z, h1c = _generate_heap_points(
+        1, 50.0, 50.0, T2_CONE_R + 2,
+        lambda x, y: _cone_height(x, y, 50.0, 50.0, T2_CONE_R, T2_CONE_H),
+        rng,
+    )
+
+    emit_progress("generator_t2", 40.0, "Generazione cumulo 2 (semisfera, cresciuto)...")
+    h2x, h2y, h2z, h2c = _generate_heap_points(
+        2, 150.0, 50.0, T2_HEMI_R + 2,
+        lambda x, y: _hemisphere_height(x, y, 150.0, 50.0, T2_HEMI_R),
+        rng,
+    )
+
+    emit_progress("generator_t2", 55.0, "Generazione cumulo 3 (piramide, diminuito)...")
+    h3x, h3y, h3z, h3c = _generate_heap_points(
+        3, 50.0, 150.0, T2_PYRAMID_BASE,
+        lambda x, y: _pyramid_height(x, y, 50.0, 150.0, T2_PYRAMID_BASE, T2_PYRAMID_H),
+        rng,
+    )
+
+    # Heap #4 removed — no points
+
+    emit_progress("generator_t2", 70.0, "Generazione cumulo 5 (nuovo cono)...")
+    h5x, h5y, h5z, h5c = _generate_heap_points(
+        5, T2_NEW_CONE_CX, T2_NEW_CONE_CY, T2_NEW_CONE_R + 2,
+        lambda x, y: _cone_height(
+            x, y, T2_NEW_CONE_CX, T2_NEW_CONE_CY, T2_NEW_CONE_R, T2_NEW_CONE_H,
+        ),
+        rng,
+    )
+
+    all_x = np.concatenate([tx, h1x, h2x, h3x, h5x])
+    all_y = np.concatenate([ty, h1y, h2y, h3y, h5y])
+    all_z = np.concatenate([tz, h1z, h2z, h3z, h5z])
+    all_color = np.concatenate([tc, h1c, h2c, h3c, h5c])
+
+    emit_progress("generator_t2", 80.0, "Scrittura file LAS (t2)...")
+    las_path = output_dir / "test.las"
+    _generate_las(all_x, all_y, all_z, all_color, las_path, colors=COLORS_RGB_T2)
+
+    emit_progress("generator_t2", 90.0, "Scrittura GeoTIFF ortofoto (t2)...")
+    tif_path = output_dir / "test.tif"
+    # Use t2 colors (includes heap #5 magenta)
+    _generate_geotiff_with_colors(all_x, all_y, all_color, tif_path, COLORS_RGB_T2)
+
+    ground_truth: dict[str, object] = {
+        "variant": "t2",
+        "terrain_elevation": TERRAIN_ELEV,
+        "crs": CRS_WKT,
+        "bounds": {
+            "min_e": ORIGIN_E,
+            "min_n": ORIGIN_N,
+            "max_e": ORIGIN_E + SITE_SIZE,
+            "max_n": ORIGIN_N + SITE_SIZE,
+        },
+        "expected_comparison": {
+            "unchanged": [1],
+            "grown": [2],
+            "decreased": [3],
+            "removed": [4],
+            "added": [5],
+        },
+        "heaps": [
+            {
+                "id": 1,
+                "type": "cone",
+                "center_e": ORIGIN_E + 50.0,
+                "center_n": ORIGIN_N + 50.0,
+                "volume_m3": round(T2_CONE_VOL, 3),
+                "max_height": T2_CONE_H,
+                "radius": T2_CONE_R,
+                "state": "unchanged",
+            },
+            {
+                "id": 2,
+                "type": "hemisphere",
+                "center_e": ORIGIN_E + 150.0,
+                "center_n": ORIGIN_N + 50.0,
+                "volume_m3": round(T2_HEMI_VOL, 3),
+                "max_height": T2_HEMI_R,
+                "radius": T2_HEMI_R,
+                "state": "grown",
+                "delta_volume_percent": round(
+                    (T2_HEMI_VOL - HEMI_VOL) / HEMI_VOL * 100, 1,
+                ),
+            },
+            {
+                "id": 3,
+                "type": "pyramid",
+                "center_e": ORIGIN_E + 50.0,
+                "center_n": ORIGIN_N + 150.0,
+                "volume_m3": round(T2_PYRAMID_VOL, 3),
+                "max_height": T2_PYRAMID_H,
+                "base_size": T2_PYRAMID_BASE,
+                "state": "decreased",
+                "delta_volume_percent": round(
+                    (T2_PYRAMID_VOL - PYRAMID_VOL) / PYRAMID_VOL * 100, 1,
+                ),
+            },
+            {
+                "id": 5,
+                "type": "cone",
+                "center_e": ORIGIN_E + T2_NEW_CONE_CX,
+                "center_n": ORIGIN_N + T2_NEW_CONE_CY,
+                "volume_m3": round(T2_NEW_CONE_VOL, 3),
+                "max_height": T2_NEW_CONE_H,
+                "radius": T2_NEW_CONE_R,
+                "state": "added",
+            },
+        ],
+    }
+
+    gt_path = output_dir / "ground_truth_t2.json"
+    gt_path.write_text(json.dumps(ground_truth, indent=2), encoding="utf-8")
+    logger.debug("ground_truth_t2.json written: %s", gt_path)
+
+    emit_progress("generator_t2", 100.0, "Dataset t2 completato")
+
+    total_points = len(all_x)
+    logger.info(
+        "Dataset t2 generato: %d punti, %d heap, CRS=%s",
+        total_points,
+        len(ground_truth["heaps"]),  # type: ignore[arg-type]
+        CRS_WKT,
+    )
+    print(f"Totale punti (t2): {total_points}", file=sys.stderr)
+
+    return ground_truth
+
+
+def _generate_geotiff_with_colors(
+    all_x: np.ndarray,
+    all_y: np.ndarray,
+    all_color: np.ndarray,
+    output_path: Path,
+    colors: dict[int, tuple[int, int, int]],
+    resolution: float = 0.10,
+) -> None:
+    """Create a synthetic RGB GeoTIFF ortophoto with a custom color map."""
+    import rasterio
+    from rasterio.transform import from_bounds
+
+    width = int(SITE_SIZE / resolution)
+    height = int(SITE_SIZE / resolution)
+
+    terrain_rgb = colors.get(0, (139, 90, 43))
+    r_band = np.full((height, width), terrain_rgb[0], dtype=np.uint8)
+    g_band = np.full((height, width), terrain_rgb[1], dtype=np.uint8)
+    b_band = np.full((height, width), terrain_rgb[2], dtype=np.uint8)
+
+    unique_ids = sorted(set(int(c) for c in all_color if c != 0))
+    for heap_id in unique_ids:
+        mask = all_color == heap_id
+        if not np.any(mask):
+            continue
+        col_idx = ((all_x[mask] - ORIGIN_E) / resolution).astype(int)
+        row_idx = (height - 1 - ((all_y[mask] - ORIGIN_N) / resolution).astype(int))
+        valid = (col_idx >= 0) & (col_idx < width) & (row_idx >= 0) & (row_idx < height)
+        col_idx = col_idx[valid]
+        row_idx = row_idx[valid]
+        cr, cg, cb = colors.get(heap_id, (200, 200, 200))
+        r_band[row_idx, col_idx] = cr
+        g_band[row_idx, col_idx] = cg
+        b_band[row_idx, col_idx] = cb
+
+    transform = from_bounds(
+        west=ORIGIN_E, south=ORIGIN_N,
+        east=ORIGIN_E + SITE_SIZE, north=ORIGIN_N + SITE_SIZE,
+        width=width, height=height,
+    )
+
+    with rasterio.open(
+        output_path, 'w', driver='GTiff',
+        height=height, width=width, count=3,
+        dtype=np.uint8, crs=CRS_WKT, transform=transform,
+    ) as dst:
+        dst.write(r_band, 1)
+        dst.write(g_band, 2)
+        dst.write(b_band, 3)
+
+    logger.debug("GeoTIFF written: %s (%dx%d)", output_path, width, height)
+
+
 def create_test_site(output_dir: Path) -> dict[str, object]:
-    """Generate a complete synthetic test dataset.
+    """Generate a complete synthetic test dataset (baseline variant).
 
     Args:
         output_dir: Directory where test.las, test.tif, ground_truth.json are written.
