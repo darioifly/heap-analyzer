@@ -103,5 +103,17 @@ export function setupMockApi(overrides?: {
       mergeHeaps: vi.fn().mockResolvedValue({ id: 1 }),
       restoreSnapshot: vi.fn().mockResolvedValue([]),
     },
+    export: {
+      geo: vi.fn().mockResolvedValue({ paths: [], crs: "EPSG:32632", count: 0 }),
+    },
+    settings: {
+      load: vi.fn().mockResolvedValue({}),
+      save: vi.fn().mockResolvedValue({}),
+      reset: vi.fn().mockResolvedValue({}),
+      getProcessingSchema: vi.fn().mockResolvedValue({ fields: [] }),
+    },
+    logging: {
+      rendererError: vi.fn(),
+    },
   };
 }

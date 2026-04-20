@@ -184,6 +184,30 @@ declare global {
         }) => void) => void;
         removeDownloadListeners: () => void;
       };
+      export: {
+        geo: (params: {
+          surveyId: number;
+          format: 'geojson' | 'shapefile' | 'both';
+          outputDir: string;
+          basename?: string;
+        }) => Promise<{ paths: string[]; crs: string; count: number }>;
+      };
+      settings: {
+        load: () => Promise<Record<string, unknown>>;
+        save: (patch: Record<string, unknown>) => Promise<Record<string, unknown>>;
+        reset: () => Promise<Record<string, unknown>>;
+        getProcessingSchema: () => Promise<{
+          fields: Array<{
+            name: string;
+            type: string;
+            default: unknown;
+            description: string;
+          }>;
+        }>;
+      };
+      logging: {
+        rendererError: (payload: { message: string; stack?: string; context?: string }) => void;
+      };
       editing: {
         createHeap: (args: {
           surveyId: number;

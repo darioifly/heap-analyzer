@@ -363,9 +363,12 @@ def recompute_single_heap(
         raster_shape = ndsm.shape
         nodata = src.nodata
 
-    # Clean nDSM: replace nodata with 0, clip negatives
-    if nodata is not None:
+    # Clean nDSM: replace nodata (incl. NaN) with 0, clip negatives.
+    # np.isclose does not match NaN, so handle NaN explicitly — a polygon that
+    # lands on an all-NaN tile (no LiDAR returns) should yield volume=0, not NaN.
+    if nodata is not None and not np.isnan(nodata):
         ndsm[np.isclose(ndsm, nodata)] = 0.0
+    ndsm = np.nan_to_num(ndsm, nan=0.0, posinf=0.0, neginf=0.0)
     ndsm = np.clip(ndsm, 0.0, None)
 
     geom = shapely_shape(polygon_geojson)

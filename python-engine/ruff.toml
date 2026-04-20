@@ -7,3 +7,5 @@ ignore = ["ANN101", "ANN102"]
 
 [lint.per-file-ignores]
 "src/heap_analyzer/tests/*" = ["ANN", "S101", "E501", "E741"]
+"tests/*" = ["ANN", "S101", "E501", "E741", "SIM"]
+"scripts/*" = ["ANN", "E501"]

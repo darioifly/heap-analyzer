@@ -298,6 +298,46 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  export: {
+    /** Export heaps as GeoJSON / Shapefile. */
+    geo: (params: {
+      surveyId: number;
+      format: 'geojson' | 'shapefile' | 'both';
+      outputDir: string;
+      basename?: string;
+    }): Promise<{ paths: string[]; crs: string; count: number }> =>
+      ipcRenderer.invoke('export:geo', params),
+  },
+
+  settings: {
+    /** Load persisted settings (defaults if file missing). */
+    load: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('settings:load'),
+
+    /** Save a partial settings patch (deep-merged atomically). */
+    save: (patch: Record<string, unknown>): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke('settings:save', patch),
+
+    /** Reset all settings to defaults. */
+    reset: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('settings:reset'),
+
+    /** Get the ProcessingConfig schema (field name/type/default/description). */
+    getProcessingSchema: (): Promise<{
+      fields: Array<{
+        name: string;
+        type: string;
+        default: unknown;
+        description: string;
+      }>;
+    }> => ipcRenderer.invoke('settings:getProcessingSchema'),
+  },
+
+  logging: {
+    /** Fire-and-forget renderer error log (to electron-side file + console). */
+    rendererError: (payload: { message: string; stack?: string; context?: string }): void => {
+      ipcRenderer.send('log:renderer-error', payload);
+    },
+  },
+
   vlm: {
     /** Get GPU hardware status. */
     gpuInfo: (): Promise<{

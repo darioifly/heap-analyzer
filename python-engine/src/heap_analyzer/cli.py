@@ -6,6 +6,7 @@ CRITICAL: stdout is ONLY JSON Lines. All debug/log output goes to stderr.
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -16,8 +17,11 @@ from heap_analyzer.utils.logging import emit_error, emit_progress, emit_result, 
 
 @click.group()
 @click.version_option(version=__version__)
-def main() -> None:
+@click.option("--verbose", is_flag=True, default=False, help="Enable DEBUG logging")
+def main(verbose: bool) -> None:
     """Heap Analyzer — Volumetric analysis of material heaps from LiDAR point clouds."""
+    from heap_analyzer.utils.logging import setup_logging
+    setup_logging(verbose=verbose)
 
 
 @main.command()
@@ -778,6 +782,164 @@ def render_heap_detail_cmd(
         click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
         import traceback
         traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
+@main.command("export-geo")
+@click.option("--results", required=True, type=click.Path(exists=True), help="Path to results.json")
+@click.option(
+    "--format", "export_format",
+    type=click.Choice(["geojson", "shapefile", "both"]), default="both",
+    help="Output format",
+)
+@click.option("--output-dir", required=True, type=click.Path(), help="Output directory")
+@click.option("--basename", default="heaps", help="Output file basename (without extension)")
+@click.option("--crs", default=None, help="EPSG CRS override (e.g. 'EPSG:32632')")
+@click.option("--heaps-json", default=None, help="JSON array of DB-enriched heap records")
+@click.option("--survey-date", default=None, help="Survey date (ISO YYYY-MM-DD)")
+def export_geo_cmd(
+    results: str,
+    export_format: str,
+    output_dir: str,
+    basename: str,
+    crs: str | None,
+    heaps_json: str | None,
+    survey_date: str | None,
+) -> None:
+    """Export heaps as GeoJSON / Shapefile for QGIS consumption."""
+    click.echo(f"[heap-analyzer] export-geo: format={export_format} output={output_dir}", err=True)
+
+    try:
+        from heap_analyzer.export.geo_export import (
+            HeapRecord,
+            export_geojson,
+            export_shapefile,
+        )
+        from heap_analyzer.processing.volume import HeapMetrics
+
+        results_path = Path(results)
+        data = json.loads(results_path.read_text(encoding="utf-8"))
+
+        # Base metrics from pipeline results
+        pipeline_metrics = {m["heap_id"]: m for m in data["heap_metrics"]}
+
+        # Resolve CRS (CLI override > results.json > default UTM 32N)
+        resolved_crs = crs or data.get("survey_metadata", {}).get("crs") or "EPSG:32632"
+
+        # Build heap records. If --heaps-json was provided, use it as source of truth
+        # (DB-enriched). Otherwise fall back to pipeline metrics only.
+        records: list[HeapRecord] = []
+        if heaps_json:
+            db_heaps = json.loads(heaps_json)
+            for h in db_heaps:
+                heap_id = h.get("id") if "id" in h else h.get("heap_id")
+                metrics = pipeline_metrics.get(heap_id, {})
+
+                records.append(
+                    HeapRecord(
+                        id=int(heap_id),
+                        label=h.get("label") or metrics.get("label"),
+                        polygon_geojson=(
+                            h.get("polygon_geojson") or metrics.get("polygon_geojson") or {}
+                        ),
+                        volume_m3=float(h.get("volume") or metrics.get("volume_m3") or 0.0),
+                        planimetric_area_m2=float(
+                            h.get("planimetric_area") or metrics.get("planimetric_area_m2") or 0.0,
+                        ),
+                        surface_area_m2=float(
+                            h.get("surface_area") or metrics.get("surface_area_m2") or 0.0,
+                        ),
+                        max_height_m=float(
+                            h.get("max_height") or metrics.get("max_height_m") or 0.0,
+                        ),
+                        mean_height_m=float(
+                            h.get("mean_height") or metrics.get("mean_height_m") or 0.0,
+                        ),
+                        base_elevation_m=float(
+                            h.get("base_elevation") or metrics.get("base_elevation_m") or 0.0,
+                        ),
+                        centroid_e=float(h.get("centroid_e") or metrics.get("centroid_e") or 0.0),
+                        centroid_n=float(h.get("centroid_n") or metrics.get("centroid_n") or 0.0),
+                        material_category=h.get("material_category"),
+                        material_confidence=h.get("material_confidence"),
+                        is_manually_confirmed=bool(h.get("is_manually_confirmed", False)),
+                        is_excluded=bool(h.get("is_excluded", False)),
+                        survey_date=h.get("survey_date") or survey_date,
+                    )
+                )
+        else:
+            for hm in data["heap_metrics"]:
+                m = HeapMetrics(**hm)
+                records.append(
+                    HeapRecord(
+                        id=m.heap_id,
+                        label=m.label,
+                        polygon_geojson=m.polygon_geojson,
+                        volume_m3=m.volume_m3,
+                        planimetric_area_m2=m.planimetric_area_m2,
+                        surface_area_m2=m.surface_area_m2,
+                        max_height_m=m.max_height_m,
+                        mean_height_m=m.mean_height_m,
+                        base_elevation_m=m.base_elevation_m,
+                        centroid_e=m.centroid_e,
+                        centroid_n=m.centroid_n,
+                        survey_date=survey_date,
+                    )
+                )
+
+        out_dir = Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        paths: list[str] = []
+
+        emit_progress("export_geo", 10.0, "Preparazione export GIS...")
+
+        if export_format in ("geojson", "both"):
+            emit_progress("export_geo", 40.0, "Scrittura GeoJSON...")
+            p = export_geojson(records, resolved_crs, out_dir / f"{basename}.geojson")
+            paths.append(str(p))
+
+        if export_format in ("shapefile", "both"):
+            emit_progress("export_geo", 75.0, "Scrittura Shapefile...")
+            p = export_shapefile(records, resolved_crs, out_dir / f"{basename}.shp")
+            paths.append(str(p))
+            for ext in (".shx", ".dbf", ".prj"):
+                sib = out_dir / f"{basename}{ext}"
+                if sib.exists():
+                    paths.append(str(sib))
+
+        emit_progress("export_geo", 100.0, "Export GIS completato")
+        emit_result({"paths": paths, "crs": resolved_crs, "count": len(records)})
+
+    except click.UsageError as exc:
+        emit_error("NO_HEAPS", str(exc))
+        sys.exit(1)
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("EXPORT_GEO_FAILED", f"Errore export GIS: {exc}")
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
+@main.command("config-schema")
+def config_schema_cmd() -> None:
+    """Emit ProcessingConfig field metadata (name, type, default, description)."""
+    try:
+        fields: list[dict[str, Any]] = []
+        for name, info in ProcessingConfig.model_fields.items():
+            annotation = info.annotation
+            type_name = getattr(annotation, "__name__", str(annotation))
+            fields.append({
+                "name": name,
+                "type": type_name,
+                "default": info.default,
+                "description": info.description or "",
+            })
+        emit_result({"fields": fields})
+    except Exception as exc:  # noqa: BLE001
+        emit_error("SCHEMA_FAILED", str(exc))
         sys.exit(1)
 
 

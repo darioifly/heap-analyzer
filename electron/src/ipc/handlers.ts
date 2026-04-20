@@ -8,6 +8,8 @@ import { setupCrossSectionHandlers } from './cross-section-handlers';
 import { setupVlmHandlers } from './vlm-handlers';
 import { setupComparisonHandlers } from './comparison-handlers';
 import { setupReportHandlers } from './report-handlers';
+import { setupExportHandlers } from './export-handlers';
+import { setupSettingsHandlers } from './settings-handlers';
 
 let bridge: PythonBridge | null = null;
 
@@ -24,6 +26,8 @@ export function setupIpcHandlers(dbService: DatabaseService): void {
   setupVlmHandlers(dbService);
   setupComparisonHandlers(dbService);
   setupReportHandlers(dbService);
+  setupExportHandlers(dbService);
+  setupSettingsHandlers();
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +137,17 @@ function setupShellHandlers(): void {
 function setupDbHandlers(db: DatabaseService): void {
   // Projects
   ipcMain.handle('db:projects:list', () => db.listProjects());
-  ipcMain.handle('db:projects:create', (_e, data) => db.createProject(data));
+  ipcMain.handle('db:projects:create', (_e, data) => {
+    console.log('[IPC] db:projects:create called with:', JSON.stringify(data));
+    try {
+      const result = db.createProject(data);
+      console.log('[IPC] db:projects:create success:', JSON.stringify(result));
+      return result;
+    } catch (err) {
+      console.error('[IPC] db:projects:create FAILED:', err);
+      throw err;
+    }
+  });
   ipcMain.handle('db:projects:update', (_e, id: number, data) => db.updateProject(id, data));
   ipcMain.handle('db:projects:delete', (_e, id: number) => db.deleteProject(id));
 

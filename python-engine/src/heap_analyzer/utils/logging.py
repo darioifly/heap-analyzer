@@ -1,8 +1,19 @@
-"""Logging utilities — all debug output goes to stderr, NEVER stdout."""
+"""Logging utilities — all debug output goes to stderr, NEVER stdout.
+
+Two distinct channels live here:
+
+* **JSON Lines emit helpers** (``emit_progress`` et al.) — write structured
+  messages to **stdout** consumed by the Electron parent process.
+* **stderr logger + rotating file handler** (``setup_logging``) — human-readable
+  logs for debugging, never on stdout.
+"""
 
 import json
 import logging
+import logging.handlers
+import os
 import sys
+from pathlib import Path
 from typing import Any
 
 
@@ -53,6 +64,72 @@ def emit_warning(message: str) -> None:
         message: Human-readable warning.
     """
     emit_json({"type": "warning", "message": message})
+
+
+_SETUP_DONE = False
+
+
+def _default_log_dir() -> Path:
+    """Resolve the log directory.
+
+    Order:
+      1. ``HEAP_ANALYZER_LOG_DIR`` env var (set by Electron to userData/logs)
+      2. ``~/.cache/heap-analyzer/logs`` (Windows resolves ``~`` via USERPROFILE)
+    """
+    env = os.environ.get("HEAP_ANALYZER_LOG_DIR")
+    if env:
+        return Path(env)
+    return Path.home() / ".cache" / "heap-analyzer" / "logs"
+
+
+def setup_logging(verbose: bool = False) -> None:
+    """Configure root logging once per process.
+
+    Writes to **stderr** (never stdout — that's reserved for JSON Lines IPC)
+    and to a rotating file handler at ``<userData>/logs/heap-analyzer.log``
+    (5 MB × 3 backups).
+
+    Idempotent: safe to call multiple times from CLI entry points.
+
+    Args:
+        verbose: If True, set root level to DEBUG; else INFO.
+    """
+    global _SETUP_DONE  # noqa: PLW0603
+    if _SETUP_DONE:
+        return
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+    # Purge any handlers a library might have attached (e.g. bare basicConfig)
+    for h in list(root.handlers):
+        root.removeHandler(h)
+
+    fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setFormatter(fmt)
+    root.addHandler(stderr_handler)
+
+    try:
+        log_dir = _default_log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_dir / "heap-analyzer.log",
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(fmt)
+        root.addHandler(file_handler)
+    except OSError:
+        # Disk / permission issue — keep stderr logging alive
+        pass
+
+    _SETUP_DONE = True
 
 
 def get_stderr_logger(name: str) -> logging.Logger:
