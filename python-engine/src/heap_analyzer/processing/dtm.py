@@ -41,7 +41,8 @@ import laspy
 import numpy as np
 import rasterio
 from pydantic import BaseModel
-from scipy.ndimage import distance_transform_edt, grey_opening
+from scipy.ndimage import distance_transform_edt, grey_opening, zoom
+from skimage.measure import block_reduce
 
 from heap_analyzer.config import ProcessingConfig
 from heap_analyzer.utils.logging import get_stderr_logger
@@ -84,7 +85,7 @@ def estimate_dtm_from_ground_classification(
     las_path: Path,
     dsm_shape: tuple[int, int],
     dsm_transform: rasterio.Affine,
-    opening_kernel_m: float = 60.0,
+    opening_kernel_m: float = 150.0,
 ) -> tuple[np.ndarray, float] | None:
     """Build a DTM by rasterising ASPRS class=2 ground points from a LAS file.
 
@@ -191,19 +192,99 @@ def estimate_dtm_from_ground_classification(
 
     # Strip aggressive class=2 misclassification of pile tops: opening with a
     # kernel larger than any heap removes elevated "ground" spikes while
-    # preserving the real terrain envelope. Auto-clamp to 1/3 of the shortest
-    # grid dimension to avoid eroding small synthetic test rasters.
+    # preserving the real terrain envelope. For fine-resolution DSMs (e.g. DJI
+    # 3 cm/px) we downsample via block_reduce(min) to ~0.5 m/px before the
+    # opening — preserves the ground envelope and makes very large kernels
+    # (150 m) affordable. Auto-clamp to 1/3 of the shortest dimension on small
+    # rasters so synthetic tests are not over-eroded.
     if opening_kernel_m > 0:
         pixel_size = abs(dsm_transform.a)
-        kernel_px = max(3, int(round(opening_kernel_m / pixel_size)))
-        kernel_px = min(kernel_px, min(height, width) // 3 or 3)
-        logger.debug(
-            "Applying class=2 opening: kernel=%d px (%.1f m at %.3f m/px)",
-            kernel_px, kernel_px * pixel_size, pixel_size,
+        dtm = _downsampled_opening(
+            dtm,
+            pixel_size=pixel_size,
+            kernel_m=opening_kernel_m,
         )
-        dtm = grey_opening(dtm, size=kernel_px)
 
     return dtm.astype(np.float64), coverage
+
+
+def _downsampled_opening(
+    arr: np.ndarray,
+    pixel_size: float,
+    kernel_m: float,
+    target_pixel_m: float = 0.5,
+) -> np.ndarray:
+    """Morphological opening with a large meter-sized kernel, made fast by
+    block-reducing (min) to a coarser working resolution then bilinearly
+    up-sampling back.
+
+    ``block_reduce(arr, D, np.min)`` is itself a form of erosion at block
+    scale: it preserves the low envelope (ground) while collapsing elevated
+    outliers, which is exactly what we want for a DTM. The subsequent
+    ``grey_opening`` reshapes the surface so that features narrower than the
+    kernel are flattened to their surroundings.
+
+    Args:
+        arr: Input raster (higher = more elevated).
+        pixel_size: Side of one input pixel, in meters.
+        kernel_m: Opening kernel size, in meters.
+        target_pixel_m: Working resolution for the opening. ~0.5 m is a good
+            default: fast opening, enough detail for downstream nDSM.
+
+    Returns:
+        Raster of the same shape as ``arr`` after the opening.
+    """
+    h, w = arr.shape
+    # If the grid is already small or the pixel size already coarse enough,
+    # run the opening directly with an auto-clamped kernel.
+    if pixel_size >= target_pixel_m or min(h, w) < 128:
+        kernel_px = max(3, int(round(kernel_m / pixel_size)))
+        kernel_px = min(kernel_px, min(h, w) // 3 or 3)
+        logger.debug(
+            "Direct opening: kernel=%d px (%.1f m at %.3f m/px)",
+            kernel_px, kernel_px * pixel_size, pixel_size,
+        )
+        return np.asarray(grey_opening(arr, size=kernel_px))
+
+    factor = max(2, int(round(target_pixel_m / pixel_size)))
+    # Pad so H, W are divisible by factor (block_reduce pads by default but
+    # controlling cval ensures the padded region doesn't depress the envelope).
+    small = np.asarray(
+        block_reduce(arr, (factor, factor), np.min, cval=float("inf"))  # type: ignore[no-untyped-call]
+    )
+    # Replace any +inf padding cells (from block_reduce) with the local min so
+    # grey_opening doesn't spread them.
+    finite_mask = np.isfinite(small)
+    if not finite_mask.all():
+        small = np.where(finite_mask, small, np.nanmin(small[finite_mask]))
+
+    small_px_m = pixel_size * factor
+    kernel_small = max(3, int(round(kernel_m / small_px_m)))
+    kernel_small = min(kernel_small, min(small.shape) // 3 or 3)
+    logger.debug(
+        "Downsampled opening: factor=%d, kernel=%d px on %dx%d grid "
+        "(effective %.1f m at %.3f m/px working res)",
+        factor, kernel_small, small.shape[0], small.shape[1],
+        kernel_small * small_px_m, small_px_m,
+    )
+    small_opened = grey_opening(small, size=kernel_small)
+
+    # Bilinear upsample back. zoom may produce a slightly different shape than
+    # requested due to rounding; crop / edge-pad to match the input exactly.
+    zoom_h = h / small_opened.shape[0]
+    zoom_w = w / small_opened.shape[1]
+    upsampled = zoom(small_opened, (zoom_h, zoom_w), order=1, mode="nearest")
+    if upsampled.shape != arr.shape:
+        result = np.empty_like(arr)
+        rh = min(h, upsampled.shape[0])
+        rw = min(w, upsampled.shape[1])
+        result[:rh, :rw] = upsampled[:rh, :rw]
+        if rh < h:
+            result[rh:, :] = result[rh - 1 : rh, :]
+        if rw < w:
+            result[:, rw:] = result[:, rw - 1 : rw]
+        return result
+    return np.asarray(upsampled)
 
 
 def estimate_dtm(

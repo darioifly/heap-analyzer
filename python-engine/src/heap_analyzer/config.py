@@ -37,10 +37,13 @@ class ProcessingConfig(BaseModel):
         ),
     )
     ground_classification_opening_m: float = Field(
-        default=60.0,
+        default=150.0,
         description=(
             "Kernel size in meters for the morphological opening applied to the "
-            "ASPRS class=2 DTM raster. Must exceed the widest heap (DJI Terra "
-            "tends to misclassify pile tops as ground). Set to 0 to disable."
+            "ASPRS class=2 DTM raster. Must exceed the widest *continuous* pile "
+            "region — industrial scrap yards can have 100+ m connected areas "
+            "of elevated material, and DJI Terra misclassifies pile tops as "
+            "ground. For fine DSMs (<0.5 m/px) opening is downsampled internally "
+            "so a 150 m kernel is cheap. Set to 0 to disable."
         ),
     )
