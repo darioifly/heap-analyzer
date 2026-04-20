@@ -6,7 +6,6 @@ CRITICAL: stdout is ONLY JSON Lines. All debug/log output goes to stderr.
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 import click
 
@@ -334,6 +333,102 @@ def export_csv(results: str, output: str, survey_date: str | None) -> None:
         raise
     except Exception as exc:  # noqa: BLE001
         emit_error("EXPORT_ERROR", f"Errore esportazione CSV: {exc}")
+        sys.exit(1)
+
+
+@main.command("generate-report")
+@click.option("--results", required=True, type=click.Path(exists=True), help="Path to results.json")
+@click.option("--tiff", required=True, type=click.Path(exists=True), help="Path to GeoTIFF")
+@click.option("--output", required=True, type=click.Path(), help="Output PDF path")
+@click.option("--logo", default=None, type=click.Path(), help="Logo PNG/JPEG path")
+@click.option("--company", default=None, help="Company name")
+@click.option("--notes", default=None, help="Additional notes text")
+@click.option("--only-confirmed", is_flag=True, default=False, help="Only confirmed heaps")
+@click.option("--site-name", default=None, help="Site name")
+@click.option("--operator", default=None, help="Operator name")
+@click.option("--survey-date", default=None, help="Survey date YYYY-MM-DD")
+@click.option("--heaps-json", default=None, help="JSON array of heap DB data with classifications")
+@click.option("--categories-json", default=None, help="JSON array of project categories")
+def generate_report_cmd(
+    results: str,
+    tiff: str,
+    output: str,
+    logo: str | None,
+    company: str | None,
+    notes: str | None,
+    only_confirmed: bool,
+    site_name: str | None,
+    operator: str | None,
+    survey_date: str | None,
+    heaps_json: str | None,
+    categories_json: str | None,
+) -> None:
+    """Generate a professional PDF report."""
+    click.echo(f"[heap-analyzer] generate-report: output={output}", err=True)
+
+    try:
+        from heap_analyzer.report.pdf_generator import (
+            ReportConfig,
+            ReportGenerator,
+            ReportProgress,
+        )
+
+        # Build config
+        config = ReportConfig(
+            site_name=site_name or "Sito",
+            company_name=company,
+            logo_path=logo,
+            operator_name=operator,
+            additional_notes=notes,
+            only_confirmed_heaps=only_confirmed,
+        )
+
+        # Inject survey_date into results if provided
+        results_path = Path(results)
+        data = json.loads(results_path.read_text(encoding="utf-8"))
+        if survey_date:
+            data.setdefault("survey_metadata", {})["survey_date"] = survey_date
+        if categories_json:
+            cats = json.loads(categories_json)
+            data.setdefault("survey_metadata", {})["project_categories"] = cats
+
+        # Write back modified data to a temp file
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8",
+        ) as tmp:
+            json.dump(data, tmp, ensure_ascii=False, indent=2)
+            temp_results = Path(tmp.name)
+
+        # Parse heap DB data
+        heap_db_data: list[dict] | None = None  # type: ignore[type-arg]
+        if heaps_json:
+            heap_db_data = json.loads(heaps_json)
+
+        def on_progress(p: ReportProgress) -> None:
+            emit_progress(p.phase, p.percent, p.message)
+
+        generator = ReportGenerator(config)
+        generator.generate(
+            results_path=temp_results,
+            tiff_path=Path(tiff),
+            output_path=Path(output),
+            progress_cb=on_progress,
+            heap_db_data=heap_db_data,
+        )
+
+        # Cleanup temp file
+        temp_results.unlink(missing_ok=True)
+
+        emit_result({"output_path": output})
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("REPORT_FAILED", f"Errore generazione report: {exc}")
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
 
