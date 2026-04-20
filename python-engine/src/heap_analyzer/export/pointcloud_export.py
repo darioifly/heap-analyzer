@@ -7,16 +7,95 @@ from __future__ import annotations
 
 import json
 import shutil
+import struct
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from pydantic import BaseModel
 
 from heap_analyzer.utils.logging import get_stderr_logger
 
 _log = get_stderr_logger(__name__)
+
+# LAS 1.x public header block offsets for bbox doubles (little-endian).
+# Applies to LAS 1.2, 1.3, 1.4 — these fields sit at fixed offsets.
+_LAS_BBOX_OFFSET = 179  # Max X
+_LAS_BBOX_STRUCT = "<dddddd"  # MaxX, MinX, MaxY, MinY, MaxZ, MinZ
+
+# Tolerance (in CRS units) beyond which the LAS header bbox is considered
+# inconsistent with the actual point extents and must be repaired before
+# feeding the file to PotreeConverter (which rejects mismatches strictly).
+_BBOX_TOLERANCE_M = 1e-4
+
+
+def _repair_las_bbox_if_needed(las_path: Path) -> bool:
+    """Validate and repair the LAS public header bounding box in-place.
+
+    PotreeConverter 2.x aborts with "point outside bounding box" when any
+    point falls outside the header's declared min/max. LAS files produced
+    by some tools can have header bboxes that are slightly off (rounding
+    during scale/offset application), so we re-scan the points and patch
+    the header bytes when they disagree with reality.
+
+    Only the 48 bytes of min/max X/Y/Z doubles are modified; point data
+    and other header fields are untouched.
+
+    Returns:
+        True if the header was repaired, False if it was already valid.
+    """
+    try:
+        import laspy
+    except ImportError:  # pragma: no cover
+        _log.warning("laspy not available; skipping LAS bbox repair")
+        return False
+
+    actual_min = [float("inf")] * 3
+    actual_max = [float("-inf")] * 3
+
+    with laspy.open(str(las_path)) as reader:
+        header = reader.header
+        h_min = (float(header.x_min), float(header.y_min), float(header.z_min))
+        h_max = (float(header.x_max), float(header.y_max), float(header.z_max))
+
+        for chunk in reader.chunk_iterator(1_000_000):
+            xs, ys, zs = chunk.x, chunk.y, chunk.z
+            actual_min[0] = min(actual_min[0], float(xs.min()))
+            actual_min[1] = min(actual_min[1], float(ys.min()))
+            actual_min[2] = min(actual_min[2], float(zs.min()))
+            actual_max[0] = max(actual_max[0], float(xs.max()))
+            actual_max[1] = max(actual_max[1], float(ys.max()))
+            actual_max[2] = max(actual_max[2], float(zs.max()))
+
+    needs_repair = False
+    for i in range(3):
+        if (
+            abs(actual_min[i] - h_min[i]) > _BBOX_TOLERANCE_M
+            or abs(actual_max[i] - h_max[i]) > _BBOX_TOLERANCE_M
+        ):
+            needs_repair = True
+            break
+
+    if not needs_repair:
+        return False
+
+    _log.warning(
+        "LAS bbox header mismatch in %s: header min=%s max=%s, actual min=%s max=%s — patching header.",
+        las_path.name, h_min, h_max, tuple(actual_min), tuple(actual_max),
+    )
+
+    packed = struct.pack(
+        _LAS_BBOX_STRUCT,
+        actual_max[0], actual_min[0],
+        actual_max[1], actual_min[1],
+        actual_max[2], actual_min[2],
+    )
+    with open(las_path, "r+b") as f:
+        f.seek(_LAS_BBOX_OFFSET)
+        f.write(packed)
+
+    return True
 
 
 class PotreeExportResult(BaseModel):
@@ -118,6 +197,16 @@ def export_for_potree(
 
     # Create output directory
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Repair LAS bbox header if inconsistent — PotreeConverter rejects
+    # files whose points fall outside the header-declared bounds.
+    if progress_callback:
+        progress_callback(0, "Verifica header LAS...")
+    try:
+        if _repair_las_bbox_if_needed(las_file):
+            _log.info("LAS bbox header repaired: %s", las_file)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("LAS bbox repair failed (continuing anyway): %s", exc)
 
     # Build command
     cmd = [str(converter), str(las_file), "-o", str(out_dir)]

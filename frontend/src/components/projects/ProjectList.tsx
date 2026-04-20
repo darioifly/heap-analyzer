@@ -90,7 +90,7 @@ export function ProjectList() {
 
   return (
     <>
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -108,7 +108,7 @@ export function ProjectList() {
         </div>
 
         {/* List */}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="max-h-48">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="animate-spin text-muted-foreground" size={24} />

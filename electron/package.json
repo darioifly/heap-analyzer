@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/database/schema.sql dist/database/schema.sql",
     "typecheck": "tsc --noEmit",
     "start": "electron .",
     "test": "vitest run"
