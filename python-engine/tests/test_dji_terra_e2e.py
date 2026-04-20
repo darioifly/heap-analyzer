@@ -91,3 +91,30 @@ def test_dji_terra_end_to_end_pipeline(tmp_path: Path) -> None:
     for artefact in ("dsm", "dtm", "ndsm"):
         p = Path(result.intermediate_files[artefact])
         assert p.exists(), f"Missing intermediate: {artefact}"
+
+    # 7. Geometry sanity checks — previous DTM bug let a single polygon
+    # span nearly the whole site by chaining pile-edge fragments. With the
+    # F2.S10 opening fix that blob should not exist.
+    bbox = result.survey_metadata.get("bounds")
+    if isinstance(bbox, dict):
+        site_area_m2 = (bbox["max_e"] - bbox["min_e"]) * (bbox["max_n"] - bbox["min_n"])
+
+        areas = sorted((m.planimetric_area_m2 for m in result.heap_metrics), reverse=True)
+        largest_area = areas[0]
+        assert largest_area < 0.3 * site_area_m2, (
+            f"Largest heap covers {largest_area:.0f} m² of a {site_area_m2:.0f} m² site "
+            f"({100 * largest_area / site_area_m2:.1f}%) — segmentation is producing a "
+            f"spanning blob, DTM likely still follows pile tops."
+        )
+
+    # 8. Volume concentration: the top heap should not dominate (>60%) — that
+    # pattern signals pile-top DTM leaking everything into one cell chain.
+    volumes = sorted((m.volume_m3 for m in result.heap_metrics), reverse=True)
+    total_volume = sum(volumes)
+    assert total_volume > 0
+    top_share = volumes[0] / total_volume
+    assert top_share < 0.6, (
+        f"Top heap holds {top_share * 100:.1f}% of total volume "
+        f"({volumes[0]:.0f}/{total_volume:.0f} m³). Expected <60% on a real "
+        f"multi-pile site — suggests residual segmentation issue."
+    )

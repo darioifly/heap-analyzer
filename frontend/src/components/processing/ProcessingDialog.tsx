@@ -30,15 +30,6 @@ import { useProcessingStore } from "@/stores/processingStore";
 import { useSurveyStore } from "@/stores/surveyStore";
 import { useHeapStore } from "@/stores/heapStore";
 
-interface ProcessingConfig {
-  dsm_resolution: number;
-  height_threshold: number;
-  min_heap_area: number;
-  base_mode: "auto" | "manual_percentile" | "manual_elevation";
-  base_percentile?: number;
-  manual_base_elevation?: number;
-}
-
 interface ProcessingDialogProps {
   surveyId: number | null;
   open: boolean;
@@ -81,7 +72,11 @@ export function ProcessingDialog({
   const handleStart = async (useAdvanced: boolean) => {
     if (!survey || !surveyId) return;
 
-    const config: ProcessingConfig | null = useAdvanced
+    // Merge survey-level processing_params (set by DJI import to carry
+    // precomputed_dsm_path, etc.) with the UI advanced-tab overrides.
+    // Advanced UI wins on conflict.
+    const surveyParams: Record<string, unknown> = survey.processingParams ?? {};
+    const advancedParams: Record<string, unknown> = useAdvanced
       ? {
           dsm_resolution: dsmResolution,
           height_threshold: heightThreshold,
@@ -90,7 +85,10 @@ export function ProcessingDialog({
           ...(baseMode === "manual_percentile" ? { base_percentile: basePercentile } : {}),
           ...(baseMode === "manual_elevation" ? { manual_base_elevation: manualElevation } : {}),
         }
-      : null;
+      : {};
+    const merged: Record<string, unknown> = { ...surveyParams, ...advancedParams };
+    const config: Record<string, unknown> | null =
+      Object.keys(merged).length > 0 ? merged : null;
 
     processingStore.start(surveyId);
     await surveyStore.update(surveyId, { processingStatus: "processing" });
@@ -147,13 +145,13 @@ export function ProcessingDialog({
           data.heap_metrics.map((m) => ({
             surveyId,
             label: (m.label as string) ?? null,
-            polygon: (typeof m.polygon === "string" ? JSON.parse(m.polygon as string) : m.polygon) as GeoJSON.Polygon,
-            volume: m.volume as number,
-            planimetricArea: m.planimetric_area as number,
-            surfaceArea: m.surface_area as number,
-            maxHeight: m.max_height as number,
-            meanHeight: m.mean_height as number,
-            baseElevation: m.base_elevation as number,
+            polygon: (typeof m.polygon_geojson === "string" ? JSON.parse(m.polygon_geojson as string) : m.polygon_geojson) as GeoJSON.Polygon,
+            volume: m.volume_m3 as number,
+            planimetricArea: m.planimetric_area_m2 as number,
+            surfaceArea: m.surface_area_m2 as number,
+            maxHeight: m.max_height_m as number,
+            meanHeight: m.mean_height_m as number,
+            baseElevation: m.base_elevation_m as number,
             centroidE: m.centroid_e as number,
             centroidN: m.centroid_n as number,
             bboxMinE: m.bbox_min_e as number,
@@ -179,7 +177,7 @@ export function ProcessingDialog({
 
       const heapCount = data.heap_metrics?.length ?? 0;
       const totalVolume = (data.heap_metrics ?? []).reduce(
-        (sum, h) => sum + (h.volume as number ?? 0),
+        (sum, h) => sum + (h.volume_m3 as number ?? 0),
         0,
       );
 

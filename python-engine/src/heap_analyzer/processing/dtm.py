@@ -84,18 +84,23 @@ def estimate_dtm_from_ground_classification(
     las_path: Path,
     dsm_shape: tuple[int, int],
     dsm_transform: rasterio.Affine,
+    opening_kernel_m: float = 60.0,
 ) -> tuple[np.ndarray, float] | None:
     """Build a DTM by rasterising ASPRS class=2 ground points from a LAS file.
 
     For each DSM cell, the minimum Z among ground-classified points landing
-    in that cell is recorded (ground surface is the lowest return). Empty
-    cells are then filled with the nearest populated cell's value (Voronoi-
-    style fill via scipy distance transform).
+    in that cell is recorded. Empty cells are filled by nearest neighbour
+    (Voronoi fill). A morphological opening with a kernel larger than the
+    widest heap is then applied to strip false-positive ground classifications
+    (DJI Terra often labels the flat top of scrap piles as class=2, which
+    would otherwise leave the DTM sitting on top of the piles).
 
     Args:
         las_path: Path to the LAS/LAZ file (must carry classification).
         dsm_shape: (height, width) of the DSM grid.
         dsm_transform: rasterio Affine transform of the DSM (for pixel lookup).
+        opening_kernel_m: Opening kernel in meters. Should exceed the widest
+            expected heap width. Set to 0 to disable the opening step.
 
     Returns:
         Tuple of (dtm_array, coverage_ratio) or ``None`` if the file has no
@@ -183,6 +188,20 @@ def estimate_dtm_from_ground_classification(
         dtm = min_z[nearest_r, nearest_c]
     else:
         dtm = min_z.copy()
+
+    # Strip aggressive class=2 misclassification of pile tops: opening with a
+    # kernel larger than any heap removes elevated "ground" spikes while
+    # preserving the real terrain envelope. Auto-clamp to 1/3 of the shortest
+    # grid dimension to avoid eroding small synthetic test rasters.
+    if opening_kernel_m > 0:
+        pixel_size = abs(dsm_transform.a)
+        kernel_px = max(3, int(round(opening_kernel_m / pixel_size)))
+        kernel_px = min(kernel_px, min(height, width) // 3 or 3)
+        logger.debug(
+            "Applying class=2 opening: kernel=%d px (%.1f m at %.3f m/px)",
+            kernel_px, kernel_px * pixel_size, pixel_size,
+        )
+        dtm = grey_opening(dtm, size=kernel_px)
 
     return dtm.astype(np.float64), coverage
 
@@ -294,6 +313,7 @@ def estimate_dtm(
         _progress(15, "Stima DTM da classificazione ground LAS...")
         result = estimate_dtm_from_ground_classification(
             las_path, dsm.shape, dsm_transform,
+            opening_kernel_m=config.ground_classification_opening_m,
         )
         if result is not None:
             dtm_ground, coverage = result

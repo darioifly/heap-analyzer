@@ -36,3 +36,11 @@ class ProcessingConfig(BaseModel):
             "generation phase (used by DJI Terra import to reuse map/dsm.tif)."
         ),
     )
+    ground_classification_opening_m: float = Field(
+        default=60.0,
+        description=(
+            "Kernel size in meters for the morphological opening applied to the "
+            "ASPRS class=2 DTM raster. Must exceed the widest heap (DJI Terra "
+            "tends to misclassify pile tops as ground). Set to 0 to disable."
+        ),
+    )

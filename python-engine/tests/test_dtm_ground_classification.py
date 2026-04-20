@@ -120,7 +120,10 @@ def test_ground_classification_builds_correct_dtm(tmp_path: Path) -> None:
         shape = ds.read(1).shape
         transform = ds.transform
 
-    result = estimate_dtm_from_ground_classification(las_path, shape, transform)
+    # opening_kernel_m=0 keeps the raw Voronoi-filled raster for this unit test.
+    result = estimate_dtm_from_ground_classification(
+        las_path, shape, transform, opening_kernel_m=0.0,
+    )
 
     assert result is not None
     dtm, coverage = result
@@ -131,6 +134,35 @@ def test_ground_classification_builds_correct_dtm(tmp_path: Path) -> None:
     # even cells covered by the heap get filled with nearest-neighbour ground.
     valid = dtm[np.isfinite(dtm)]
     assert abs(float(np.median(valid)) - 100.0) < 0.5
+
+
+def test_ground_classification_opening_strips_pile_top(tmp_path: Path) -> None:
+    """With all points misclassified as class=2 (DJI-style noise), the opening
+    pulls the DTM down to the true terrain level on top of the pile too."""
+    dsm_path = tmp_path / "dsm.tif"
+    las_path = tmp_path / "cloud.las"
+    # Bigger grid so a meaningful opening kernel fits (100x100 @ 1m/px = 100m).
+    _write_synthetic_dsm(
+        dsm_path, width=100, height=100, base_z=100.0, heap_height=5.0,
+    )
+    # Treat ALL points as class=2 — reproduces DJI over-classification.
+    _write_synthetic_las(las_path, dsm_path, ground_fraction=1.0)
+
+    with rasterio.open(str(dsm_path)) as ds:
+        shape = ds.read(1).shape
+        transform = ds.transform
+
+    # Kernel 15 m is > the 10 m heap → opening removes pile top.
+    result = estimate_dtm_from_ground_classification(
+        las_path, shape, transform, opening_kernel_m=15.0,
+    )
+
+    assert result is not None
+    dtm, _ = result
+    # At the heap centre (50, 50) the raw DTM would be 105 m, opened should be 100.
+    assert dtm[50, 50] < 100.5, (
+        f"Opening should flatten pile-top to ground, got {dtm[50, 50]:.2f}"
+    )
 
 
 def test_ground_classification_returns_none_without_classification(tmp_path: Path) -> None:
@@ -147,7 +179,9 @@ def test_ground_classification_returns_none_without_classification(tmp_path: Pat
         shape = ds.read(1).shape
         transform = ds.transform
 
-    result = estimate_dtm_from_ground_classification(las_path, shape, transform)
+    result = estimate_dtm_from_ground_classification(
+        las_path, shape, transform, opening_kernel_m=0.0,
+    )
     # Zero ground points → returns None
     assert result is None
 
@@ -167,7 +201,9 @@ def test_ground_classification_returns_none_when_coverage_below_threshold(
         shape = ds.read(1).shape
         transform = ds.transform
 
-    result = estimate_dtm_from_ground_classification(las_path, shape, transform)
+    result = estimate_dtm_from_ground_classification(
+        las_path, shape, transform, opening_kernel_m=0.0,
+    )
     assert result is None
 
 
@@ -189,7 +225,7 @@ def test_estimate_dtm_selects_ground_classification_when_available(
     result = estimate_dtm(
         dsm_path=dsm_path,
         output_path=dtm_path,
-        config=ProcessingConfig(),
+        config=ProcessingConfig(ground_classification_opening_m=0.0),
         las_path=las_path,
     )
 
@@ -210,7 +246,7 @@ def test_estimate_dtm_falls_back_when_las_has_no_ground(tmp_path: Path) -> None:
     result = estimate_dtm(
         dsm_path=dsm_path,
         output_path=dtm_path,
-        config=ProcessingConfig(),
+        config=ProcessingConfig(ground_classification_opening_m=0.0),
         las_path=las_path,
     )
 
