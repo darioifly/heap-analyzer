@@ -48,6 +48,14 @@ export function setupMockApi(overrides?: {
     dialog: {
       openFile: vi.fn().mockResolvedValue(null),
       saveFile: vi.fn().mockResolvedValue(null),
+      openDirectory: vi.fn().mockResolvedValue(null),
+    },
+    report: {
+      generate: vi.fn().mockResolvedValue({ success: true, outputPaths: ["/tmp/report.pdf"] }),
+      cancel: vi.fn().mockResolvedValue(undefined),
+      onProgress: vi.fn(),
+      removeProgressListeners: vi.fn(),
+      openPath: vi.fn().mockResolvedValue(undefined),
     },
     elevation: {
       recomputeAll: vi.fn().mockResolvedValue({ heaps: [], baseElevation: 100 }),

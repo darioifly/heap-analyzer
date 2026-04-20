@@ -71,6 +71,30 @@ declare global {
           filters?: { name: string; extensions: string[] }[];
           defaultPath?: string;
         }) => Promise<string | null>;
+        openDirectory: (options: {
+          title?: string;
+          defaultPath?: string;
+        }) => Promise<string | null>;
+      };
+      report: {
+        generate: (params: {
+          surveyId: number;
+          format: 'pdf' | 'csv' | 'pdf+csv';
+          destinationDir: string;
+          logoPath: string | null;
+          companyName: string | null;
+          notes: string | null;
+          onlyConfirmed: boolean;
+        }) => Promise<{ success: boolean; outputPaths: string[] }>;
+        cancel: () => Promise<void>;
+        onProgress: (callback: (data: {
+          type: string;
+          phase: string;
+          percent: number;
+          message: string;
+        }) => void) => void;
+        removeProgressListeners: () => void;
+        openPath: (fullPath: string) => Promise<void>;
       };
       elevation: {
         recomputeAll: (args: {

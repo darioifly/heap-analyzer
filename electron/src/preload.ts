@@ -208,6 +208,48 @@ contextBridge.exposeInMainWorld('api', {
       filters?: { name: string; extensions: string[] }[];
       defaultPath?: string;
     }): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile', options),
+
+    /** Open native directory picker dialog. Returns selected path or null. */
+    openDirectory: (options: {
+      title?: string;
+      defaultPath?: string;
+    }): Promise<string | null> => ipcRenderer.invoke('dialog:openDirectory', options),
+  },
+
+  report: {
+    /** Generate a PDF/CSV report. */
+    generate: (params: {
+      surveyId: number;
+      format: 'pdf' | 'csv' | 'pdf+csv';
+      destinationDir: string;
+      logoPath: string | null;
+      companyName: string | null;
+      notes: string | null;
+      onlyConfirmed: boolean;
+    }): Promise<{ success: boolean; outputPaths: string[] }> =>
+      ipcRenderer.invoke('report:generate', params),
+
+    /** Cancel an active report generation. */
+    cancel: (): Promise<void> => ipcRenderer.invoke('report:cancel'),
+
+    /** Register a callback for report progress events. */
+    onProgress: (callback: (data: {
+      type: string;
+      phase: string;
+      percent: number;
+      message: string;
+    }) => void): void => {
+      ipcRenderer.on('report:progress', (_event, data) => callback(data));
+    },
+
+    /** Remove report progress listeners. */
+    removeProgressListeners: (): void => {
+      ipcRenderer.removeAllListeners('report:progress');
+    },
+
+    /** Open file with system default viewer. */
+    openPath: (fullPath: string): Promise<void> =>
+      ipcRenderer.invoke('shell:openPath', fullPath),
   },
 
   comparison: {

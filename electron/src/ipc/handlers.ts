@@ -7,6 +7,7 @@ import { setupPotreeHandlers } from './potree-handlers';
 import { setupCrossSectionHandlers } from './cross-section-handlers';
 import { setupVlmHandlers } from './vlm-handlers';
 import { setupComparisonHandlers } from './comparison-handlers';
+import { setupReportHandlers } from './report-handlers';
 
 let bridge: PythonBridge | null = null;
 
@@ -22,6 +23,7 @@ export function setupIpcHandlers(dbService: DatabaseService): void {
   setupCrossSectionHandlers(dbService);
   setupVlmHandlers(dbService);
   setupComparisonHandlers(dbService);
+  setupReportHandlers(dbService);
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +72,24 @@ function setupDialogHandlers(): void {
         properties: ['openFile'],
         title: options.title,
         filters: options.filters,
+        defaultPath: options.defaultPath,
+      });
+      return result.canceled ? null : result.filePaths[0];
+    },
+  );
+
+  ipcMain.handle(
+    'dialog:openDirectory',
+    async (
+      _event,
+      options: {
+        title?: string;
+        defaultPath?: string;
+      },
+    ) => {
+      const result = await dialog.showOpenDialog({
+        properties: ['openDirectory'],
+        title: options.title,
         defaultPath: options.defaultPath,
       });
       return result.canceled ? null : result.filePaths[0];
