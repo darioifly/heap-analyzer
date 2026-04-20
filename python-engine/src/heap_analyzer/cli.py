@@ -943,6 +943,52 @@ def config_schema_cmd() -> None:
         sys.exit(1)
 
 
+@main.command("scan-dji-terra")
+@click.option(
+    "--folder", required=True, type=click.Path(), help="DJI Terra root folder path"
+)
+def scan_dji_terra_cmd(folder: str) -> None:
+    """Scan a DJI Terra output folder and emit its asset manifest as JSON Lines."""
+    click.echo(f"[heap-analyzer] scan-dji-terra called: folder={folder}", err=True)
+
+    try:
+        from heap_analyzer.io.dji_terra_scanner import (
+            DJITerraIncompleteError,
+            scan_dji_terra_folder,
+        )
+
+        manifest = scan_dji_terra_folder(Path(folder))
+
+        # Convert to JSON-serializable dict (paths become strings, date → ISO).
+        payload: dict[str, Any] = {
+            "orthophoto_path": str(manifest.orthophoto_path),
+            "dsm_path": str(manifest.dsm_path),
+            "las_path": str(manifest.las_path),
+            "crs": manifest.crs,
+            "survey_date": manifest.survey_date.isoformat() if manifest.survey_date else None,
+            "bbox": list(manifest.bbox) if manifest.bbox else None,
+            "has_ground_classification": manifest.has_ground_classification,
+            "pipeline_complete": manifest.pipeline_complete,
+            "warnings": manifest.warnings,
+        }
+        emit_result(payload)
+
+    except FileNotFoundError as exc:
+        emit_error("FOLDER_NOT_FOUND", str(exc))
+        sys.exit(1)
+    except DJITerraIncompleteError as exc:
+        emit_error("DJI_INCOMPLETE", str(exc))
+        sys.exit(1)
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("DJI_SCAN_FAILED", f"Errore scansione DJI Terra: {exc}")
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
 @main.command("cross-section")
 @click.option("--dsm", required=True, type=click.Path(exists=True), help="Path to DSM GeoTIFF")
 @click.option("--dtm", required=True, type=click.Path(exists=True), help="Path to DTM GeoTIFF")
