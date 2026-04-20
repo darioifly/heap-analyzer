@@ -290,7 +290,9 @@ class ProcessingPipeline:
             "las_path": str(las_path),
             "tiff_path": str(tiff_path),
             "output_dir": str(output_dir),
-            "config": self.config.model_dump(),
+            # mode='json' serialises Path / datetime to str so the dict round-
+            # trips through json.dumps in the IPC bridge without a TypeError.
+            "config": self.config.model_dump(mode="json"),
             "processing_time_s": round(elapsed, 1),
             "heap_count": len(metrics),
             "filtered_count": len(filtered),

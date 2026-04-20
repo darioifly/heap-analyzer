@@ -324,15 +324,31 @@ def test_pipeline_precomputed_dsm_skips_generation(tmp_path: Path) -> None:
     config = ProcessingConfig(precomputed_dsm_path=dsm_source)
     pipeline = ProcessingPipeline(config)
 
+    pipeline_error: Exception | None = None
     try:
-        pipeline.run(las_path, tiff_path, output_dir)
-    except Exception:
-        # Pipeline can fail downstream (tiny synthetic DSM) — we only assert
-        # the DSM was imported, not that the whole pipeline succeeds.
-        pass
+        result = pipeline.run(las_path, tiff_path, output_dir)
+    except Exception as exc:
+        # Pipeline can fail downstream on a tiny synthetic site (e.g. tile
+        # generation). We still want to assert the DSM import happened AND
+        # that the error was NOT a JSON serialisation failure, because that
+        # would indicate a regression to the WindowsPath-in-config bug.
+        pipeline_error = exc
+        result = None
+
+    assert not (
+        pipeline_error
+        and "not JSON serializable" in str(pipeline_error)
+    ), f"Pipeline result dict must be JSON-safe: {pipeline_error}"
 
     imported_dsm = output_dir / "dsm.tif"
     assert imported_dsm.exists(), "DSM must be copied to output dir"
     assert imported_dsm.read_bytes() == source_bytes, (
         "Pipeline should copy the precomputed DSM verbatim, not regenerate it."
     )
+
+    # If the pipeline ran fully, the survey_metadata dict must be JSON-safe
+    # (round-trip via json.dumps without TypeError on the precomputed Path).
+    if result is not None:
+        import json
+
+        json.dumps(result.survey_metadata)  # must not raise
