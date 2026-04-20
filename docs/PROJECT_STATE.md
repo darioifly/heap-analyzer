@@ -1,12 +1,14 @@
 # PROJECT_STATE.md — Heap Analyzer
 
-> Generated: 2026-04-20 · Generator: Claude Code regen pass · Source of truth: live repo at commit `6e2227a`
+> Generated: 2026-04-20 · Generator: Claude Code regen pass · Source of truth: live repo at commit `477b141` (tip-of-main at commit time)
 > Every numeric/path fact in this file came from a command run during regeneration.
+> Note: il grosso del contenuto è stato raccolto a `6e2227a`; durante la scrittura è arrivato in parallelo il commit `477b141` (F2.S10 DTM fix, 150 m kernel) — incluso qui sotto.
 
 ## [HEADER]
 - Repo: `https://github.com/darioifly/heap-analyzer.git`
 - Branch: `main` (single-branch workflow, no feature branches)
-- HEAD: `6e2227a` — *chore: WIP fixes — Potree LAS bbox repair, tailwind shadcn vars, schema copy, layout*
+- HEAD al momento del commit di rigenerazione: `477b141` — *F2.S10 fix: downsampled opening with 150 m kernel to cover 100+ m pile areas*
+- Commit di rigenerazione (questo file): `7d4fa76` — *docs: regenerate PROJECT_STATE from live repo*
 - Working tree: clean
 - Working dir: `C:\Users\iflys\projects\Heap Analyzer`
 - OS: Windows 11 Pro, Python 3.11 at `C:\Users\iflys\AppData\Local\Programs\Python\Python311\python.exe`
@@ -431,6 +433,7 @@ Tutto il contenuto in questo documento è nuovo rispetto al vuoto.
 
 ### Ultimi commit rilevanti (git log -10)
 ```
+477b141 F2.S10 fix: downsampled opening with 150 m kernel to cover 100+ m pile areas
 6e2227a chore: WIP fixes — Potree LAS bbox repair, tailwind shadcn vars, schema copy, layout
 67bfe8c F2.S10 fix: use model_dump(mode='json') so Path fields serialize for IPC
 efbb406 F2.S10 fix: thread precomputed DSM + strip DJI class=2 pile-top noise
@@ -490,9 +493,10 @@ Cronologia dei task completati (newest first). Ogni entry re-derivata da `git lo
 **Decision**: [docs/decisions/F5-pdf-runtime.md](docs/decisions/F5-pdf-runtime.md)
 
 ### F2.S10 — Import DJI Terra (extra rispetto ai 48 task)
-**Commits**: `f7e3f9c`→`67bfe8c` (9 commit). **Report**: [docs/reports/F2.S10-report.md](docs/reports/F2.S10-report.md)
+**Commits**: `f7e3f9c`→`67bfe8c` (9 commit) + fix successivo `477b141` (downsampled opening con kernel 150 m per coprire pile >100 m). **Report**: [docs/reports/F2.S10-report.md](docs/reports/F2.S10-report.md)
 **What**: scanner cartella DJI Terra → manifest (orthophoto, dsm, las, crs, bbox, has_ground_classification, pipeline_complete, warnings); import con opzione `useDjiDsm`/`copyFiles`; pipeline accetta DSM precomputato; DTM usa ASPRS ground class quando disponibile; rumore di picco (class=2) strippato.
 **DB**: `surveys.source_type` + `surveys.dji_folder_path` (migrazione additiva).
+**Post-fix `477b141`**: `ground_classification_opening_m` da 60 → 150 m. Introdotta `_downsampled_opening()` in `processing/dtm.py`: quando DSM è più fine di ~0.5 m/px (DJI 3 cm/px), `skimage.block_reduce(np.min)` a griglia 0.5 m, `grey_opening` su griglia coarse, poi `zoom` bilineare. Risolve polygon-solo-perimetro su aree scrap 80×150 m dove la ground class=2 non esiste all'interno del cumulo.
 
 ### F3.S05 — Sezioni Trasversali
 **Commit**: `e56f2d5`.
