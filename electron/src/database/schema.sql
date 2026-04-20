@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS surveys (
   label_map_path TEXT,
   tiles_path TEXT,
   ndsm_heatmap_path TEXT,
+  source_type TEXT DEFAULT 'manual', -- 'manual' | 'dji_terra'
+  dji_folder_path TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

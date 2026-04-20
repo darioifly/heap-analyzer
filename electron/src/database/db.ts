@@ -17,6 +17,8 @@ export interface Project {
   updated_at: string;
 }
 
+export type SurveySourceType = 'manual' | 'dji_terra';
+
 export interface Survey {
   id: number;
   project_id: number;
@@ -34,6 +36,8 @@ export interface Survey {
   ndsm_heatmap_path: string | null;
   base_elevation: number | null;
   potree_path: string | null;
+  source_type: SurveySourceType;
+  dji_folder_path: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -114,6 +118,12 @@ function migrateSchema(db: Database.Database): void {
   if (!colNames.has('potree_path')) {
     db.exec('ALTER TABLE surveys ADD COLUMN potree_path TEXT');
   }
+  if (!colNames.has('source_type')) {
+    db.exec("ALTER TABLE surveys ADD COLUMN source_type TEXT DEFAULT 'manual'");
+  }
+  if (!colNames.has('dji_folder_path')) {
+    db.exec('ALTER TABLE surveys ADD COLUMN dji_folder_path TEXT');
+  }
 }
 
 export class DatabaseService {
@@ -169,20 +179,29 @@ export class DatabaseService {
       .all(projectId) as Survey[];
   }
 
-  createSurvey(data: Omit<Survey, 'id' | 'created_at' | 'updated_at'>): Survey {
+  createSurvey(
+    data: Omit<Survey, 'id' | 'created_at' | 'updated_at' | 'source_type' | 'dji_folder_path'> &
+      Partial<Pick<Survey, 'source_type' | 'dji_folder_path'>>,
+  ): Survey {
     const stmt = this.db.prepare(`
       INSERT INTO surveys
         (project_id, survey_date, operator, las_path, tiff_path,
          processing_params, processing_status,
          dsm_path, dtm_path, ndsm_path, label_map_path,
-         tiles_path, ndsm_heatmap_path, base_elevation, potree_path)
+         tiles_path, ndsm_heatmap_path, base_elevation, potree_path,
+         source_type, dji_folder_path)
       VALUES
         (@project_id, @survey_date, @operator, @las_path, @tiff_path,
          @processing_params, @processing_status,
          @dsm_path, @dtm_path, @ndsm_path, @label_map_path,
-         @tiles_path, @ndsm_heatmap_path, @base_elevation, @potree_path)
+         @tiles_path, @ndsm_heatmap_path, @base_elevation, @potree_path,
+         @source_type, @dji_folder_path)
     `);
-    const info = stmt.run(data);
+    const info = stmt.run({
+      ...data,
+      source_type: data.source_type ?? 'manual',
+      dji_folder_path: data.dji_folder_path ?? null,
+    });
     return this.db
       .prepare('SELECT * FROM surveys WHERE id = ?')
       .get(info.lastInsertRowid) as Survey;
