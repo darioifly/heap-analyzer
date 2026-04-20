@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Upload, Plus } from "lucide-react";
+import { Loader2, Upload, Plus, FolderInput } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,6 +8,7 @@ import { useSurveyStore } from "@/stores/surveyStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { SurveyCard } from "./SurveyCard";
 import { ImportSurveyDialog } from "./ImportSurveyDialog";
+import { ImportDJIDialog } from "./ImportDJIDialog";
 
 interface SurveyListProps {
   onProcessSurvey: (surveyId: number) => void;
@@ -15,9 +16,10 @@ interface SurveyListProps {
 
 export function SurveyList({ onProcessSurvey }: SurveyListProps) {
   const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
-  const { surveys, selectedSurveyId, isLoading, create, select } =
+  const { surveys, selectedSurveyId, isLoading, create, select, loadByProject } =
     useSurveyStore();
   const [importOpen, setImportOpen] = useState(false);
+  const [djiImportOpen, setDjiImportOpen] = useState(false);
 
   if (!selectedProjectId) return null;
 
@@ -50,15 +52,28 @@ export function SurveyList({ onProcessSurvey }: SurveyListProps) {
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Rilievi
         </h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => setImportOpen(true)}
-          aria-label="Nuovo rilievo"
-        >
-          <Plus size={16} strokeWidth={1.75} />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setDjiImportOpen(true)}
+            aria-label="Importa da DJI Terra"
+            title="Importa da DJI Terra"
+          >
+            <FolderInput size={16} strokeWidth={1.75} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setImportOpen(true)}
+            aria-label="Nuovo rilievo"
+            title="Nuovo rilievo"
+          >
+            <Plus size={16} strokeWidth={1.75} />
+          </Button>
+        </div>
       </div>
 
       <ScrollArea className="flex-1">
@@ -106,6 +121,16 @@ export function SurveyList({ onProcessSurvey }: SurveyListProps) {
         open={importOpen}
         onOpenChange={setImportOpen}
         onImport={handleImport}
+      />
+
+      <ImportDJIDialog
+        open={djiImportOpen}
+        onOpenChange={setDjiImportOpen}
+        projectId={selectedProjectId}
+        onImported={(surveyId) => {
+          loadByProject(selectedProjectId);
+          select(surveyId);
+        }}
       />
     </>
   );
