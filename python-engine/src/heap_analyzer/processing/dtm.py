@@ -236,10 +236,16 @@ def _downsampled_opening(
     """
     h, w = arr.shape
     # If the grid is already small or the pixel size already coarse enough,
-    # run the opening directly with an auto-clamped kernel.
+    # run the opening directly. For small synthetic rasters clamp to 1/3 of
+    # the shortest dimension; for real data prefer the requested kernel even
+    # if it approaches the grid size (a nearly-flat DTM at the site's low
+    # percentile is the correct behaviour when piles cover most of the site).
     if pixel_size >= target_pixel_m or min(h, w) < 128:
         kernel_px = max(3, int(round(kernel_m / pixel_size)))
-        kernel_px = min(kernel_px, min(h, w) // 3 or 3)
+        if min(h, w) < 128:
+            kernel_px = min(kernel_px, min(h, w) // 3 or 3)
+        else:
+            kernel_px = min(kernel_px, max(3, min(h, w) - 1))
         logger.debug(
             "Direct opening: kernel=%d px (%.1f m at %.3f m/px)",
             kernel_px, kernel_px * pixel_size, pixel_size,
@@ -260,7 +266,11 @@ def _downsampled_opening(
 
     small_px_m = pixel_size * factor
     kernel_small = max(3, int(round(kernel_m / small_px_m)))
-    kernel_small = min(kernel_small, min(small.shape) // 3 or 3)
+    # Loose clamp: allow the kernel up to (short_side - 1). On industrial sites
+    # where piles span most of the site this collapses the DTM to the global
+    # low percentile, which is the correct ground estimate when there is no
+    # interior reference ground.
+    kernel_small = min(kernel_small, max(3, min(small.shape) - 1))
     logger.debug(
         "Downsampled opening: factor=%d, kernel=%d px on %dx%d grid "
         "(effective %.1f m at %.3f m/px working res)",
