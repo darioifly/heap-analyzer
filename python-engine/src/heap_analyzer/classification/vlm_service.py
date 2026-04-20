@@ -59,6 +59,22 @@ class DownloadProgress(BaseModel):
 
 _MODEL_REGISTRY: list[dict[str, object]] = [
     {
+        "name": "qwen3-vl-8b",
+        "display_name": "Qwen3-VL 8B",
+        "hf_id": "Qwen/Qwen3-VL-8B-Instruct",
+        "vram_required_mb": 18000,
+        "description": "Ultima generazione Qwen vision-language, 9B parametri. Richiede ~18 GB VRAM.",
+        "warns_if_insufficient": False,
+    },
+    {
+        "name": "gemma-4-e4b",
+        "display_name": "Gemma 4 E4B",
+        "hf_id": "google/gemma-4-E4B-it",
+        "vram_required_mb": 16000,
+        "description": "Ultima generazione Google Gemma multimodale (visione+audio), 4.5B effettivi. Richiede ~16 GB VRAM.",
+        "warns_if_insufficient": False,
+    },
+    {
         "name": "qwen2.5-vl-7b",
         "display_name": "Qwen2.5-VL 7B",
         "hf_id": "Qwen/Qwen2.5-VL-7B-Instruct",
@@ -248,8 +264,22 @@ class VLMService:
 
         _log.info("Loading model %s (%s) onto GPU...", model_name, hf_id)
 
-        # Use model-specific class for Qwen2.5-VL, AutoModel for others
-        if "qwen2.5-vl" in model_name:
+        # Use model-specific class for Qwen family, AutoModel for others
+        if "qwen3-vl" in model_name:
+            from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+
+            model = Qwen3VLForConditionalGeneration.from_pretrained(
+                hf_id,
+                cache_dir=str(self._models_dir),
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+                attn_implementation="sdpa",
+            )
+            processor = AutoProcessor.from_pretrained(
+                hf_id,
+                cache_dir=str(self._models_dir),
+            )
+        elif "qwen2.5-vl" in model_name:
             from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
             model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
@@ -269,7 +299,7 @@ class VLMService:
             model = AutoModelForImageTextToText.from_pretrained(
                 hf_id,
                 cache_dir=str(self._models_dir),
-                torch_dtype=torch.float16,
+                torch_dtype=torch.bfloat16,
                 device_map="auto",
                 attn_implementation="sdpa",
             )
