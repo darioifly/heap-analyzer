@@ -106,6 +106,23 @@ export function setupMockApi(overrides?: {
     export: {
       geo: vi.fn().mockResolvedValue({ paths: [], crs: "EPSG:32632", count: 0 }),
     },
+    dji: {
+      scanFolder: vi.fn().mockResolvedValue({
+        ok: true,
+        manifest: {
+          orthophoto_path: "",
+          dsm_path: "",
+          las_path: "",
+          crs: null,
+          survey_date: null,
+          bbox: null,
+          has_ground_classification: false,
+          pipeline_complete: true,
+          warnings: [],
+        },
+      }),
+      importSurvey: vi.fn().mockResolvedValue({ surveyId: 1 }),
+    },
     settings: {
       load: vi.fn().mockResolvedValue({}),
       save: vi.fn().mockResolvedValue({}),

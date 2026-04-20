@@ -192,6 +192,44 @@ declare global {
           basename?: string;
         }) => Promise<{ paths: string[]; crs: string; count: number }>;
       };
+      dji: {
+        scanFolder: (params: { folderPath: string }) => Promise<
+          | {
+              ok: true;
+              manifest: {
+                orthophoto_path: string;
+                dsm_path: string;
+                las_path: string;
+                crs: string | null;
+                survey_date: string | null;
+                bbox: [number, number, number, number] | null;
+                has_ground_classification: boolean;
+                pipeline_complete: boolean;
+                warnings: string[];
+              };
+            }
+          | { ok: false; code: string; message: string }
+        >;
+        importSurvey: (params: {
+          projectId: number;
+          folderPath: string;
+          manifest: {
+            orthophoto_path: string;
+            dsm_path: string;
+            las_path: string;
+            crs: string | null;
+            survey_date: string | null;
+            bbox: [number, number, number, number] | null;
+            has_ground_classification: boolean;
+            pipeline_complete: boolean;
+            warnings: string[];
+          };
+          useDjiDsm: boolean;
+          copyFiles: boolean;
+          surveyDate: string;
+          operator: string;
+        }) => Promise<{ surveyId: number }>;
+      };
       settings: {
         load: () => Promise<Record<string, unknown>>;
         save: (patch: Record<string, unknown>) => Promise<Record<string, unknown>>;

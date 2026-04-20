@@ -10,6 +10,7 @@ import { setupComparisonHandlers } from './comparison-handlers';
 import { setupReportHandlers } from './report-handlers';
 import { setupExportHandlers } from './export-handlers';
 import { setupSettingsHandlers } from './settings-handlers';
+import { setupDjiHandlers } from './dji-handlers';
 
 let bridge: PythonBridge | null = null;
 
@@ -28,6 +29,7 @@ export function setupIpcHandlers(dbService: DatabaseService): void {
   setupReportHandlers(dbService);
   setupExportHandlers(dbService);
   setupSettingsHandlers();
+  setupDjiHandlers(dbService);
 }
 
 // ---------------------------------------------------------------------------

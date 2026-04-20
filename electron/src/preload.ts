@@ -309,6 +309,49 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('export:geo', params),
   },
 
+  dji: {
+    /** Scan a DJI Terra output folder; returns its asset manifest. */
+    scanFolder: (params: { folderPath: string }): Promise<
+      | {
+          ok: true;
+          manifest: {
+            orthophoto_path: string;
+            dsm_path: string;
+            las_path: string;
+            crs: string | null;
+            survey_date: string | null;
+            bbox: [number, number, number, number] | null;
+            has_ground_classification: boolean;
+            pipeline_complete: boolean;
+            warnings: string[];
+          };
+        }
+      | { ok: false; code: string; message: string }
+    > => ipcRenderer.invoke('dji:scanFolder', params),
+
+    /** Create a survey from a previously-scanned DJI Terra folder. */
+    importSurvey: (params: {
+      projectId: number;
+      folderPath: string;
+      manifest: {
+        orthophoto_path: string;
+        dsm_path: string;
+        las_path: string;
+        crs: string | null;
+        survey_date: string | null;
+        bbox: [number, number, number, number] | null;
+        has_ground_classification: boolean;
+        pipeline_complete: boolean;
+        warnings: string[];
+      };
+      useDjiDsm: boolean;
+      copyFiles: boolean;
+      surveyDate: string;
+      operator: string;
+    }): Promise<{ surveyId: number }> =>
+      ipcRenderer.invoke('dji:importSurvey', params),
+  },
+
   settings: {
     /** Load persisted settings (defaults if file missing). */
     load: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('settings:load'),
