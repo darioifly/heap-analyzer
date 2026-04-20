@@ -1,5 +1,7 @@
 """Processing configuration with Pydantic validation."""
 
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 
@@ -25,4 +27,12 @@ class ProcessingConfig(BaseModel):
     morpho_kernel_size: int = Field(
         default=50,
         description="Morphological kernel size in pixels (= 5m @ 0.10m/px)",
+    )
+    precomputed_dsm_path: Path | None = Field(
+        default=None,
+        description=(
+            "Optional path to a pre-generated DSM GeoTIFF. When set and the file "
+            "exists, the pipeline copies it as the survey DSM and skips the DSM "
+            "generation phase (used by DJI Terra import to reuse map/dsm.tif)."
+        ),
     )

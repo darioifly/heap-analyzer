@@ -160,15 +160,31 @@ class ProcessingPipeline:
             if progress_callback is not None:
                 progress_callback(pct, msg)
 
-        # --- Phase 1: Generate DSM (0-25%) ---
-        _progress(0, "Fase 1: Generazione DSM...")
+        # --- Phase 1: Generate or import DSM (0-25%) ---
         dsm_path = output_dir / "dsm.tif"
 
-        def dsm_progress(pct: int, msg: str) -> None:
-            # Scale 0-100 to 0-25
-            _progress(int(pct * 0.25), f"DSM: {msg}")
+        precomputed = self.config.precomputed_dsm_path
+        if precomputed is not None and Path(precomputed).exists():
+            # Skip DSM generation — reuse an externally-produced DSM (e.g. from
+            # DJI Terra). Copy into the output layout so downstream phases find
+            # it exactly where they expect.
+            import shutil
 
-        generate_dsm(las_path, dsm_path, self.config, progress_callback=dsm_progress)
+            _progress(0, "Fase 1: Importazione DSM esterno...")
+            shutil.copy2(Path(precomputed), dsm_path)
+            logger.info("DSM imported from %s (generation skipped)", precomputed)
+            _progress(
+                25,
+                "DSM importato (generazione saltata)",
+            )
+        else:
+            _progress(0, "Fase 1: Generazione DSM...")
+
+            def dsm_progress(pct: int, msg: str) -> None:
+                # Scale 0-100 to 0-25
+                _progress(int(pct * 0.25), f"DSM: {msg}")
+
+            generate_dsm(las_path, dsm_path, self.config, progress_callback=dsm_progress)
 
         # --- Phase 2: Estimate DTM (25-35%) ---
         _progress(25, "Fase 2: Stima DTM...")
@@ -178,7 +194,9 @@ class ProcessingPipeline:
             _progress(25 + int(pct * 0.10), f"DTM: {msg}")
 
         dtm_result: DtmResult = estimate_dtm(
-            dsm_path, dtm_path, self.config, progress_callback=dtm_progress,
+            dsm_path, dtm_path, self.config,
+            las_path=las_path,
+            progress_callback=dtm_progress,
         )
 
         # --- Phase 3: Compute nDSM (35-50%) ---
