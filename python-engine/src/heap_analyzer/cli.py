@@ -521,6 +521,171 @@ def sample_ground_cmd(dsm: str, polygons_json: str) -> None:
         sys.exit(1)
 
 
+@main.command("render-site-overview")
+@click.option("--tiff", required=True, type=click.Path(exists=True), help="Path to GeoTIFF")
+@click.option("--results", required=True, type=click.Path(exists=True), help="Path to results.json")
+@click.option("--site-name", default="Sito", help="Site name for the title")
+@click.option("--survey-date", required=True, help="Survey date YYYY-MM-DD")
+@click.option("--output", required=True, type=click.Path(), help="Output PNG path")
+@click.option("--dpi", default=150, type=int, help="Output DPI")
+@click.option("--max-width", default=2400, type=int, help="Max raster width in pixels")
+@click.option("--categories-json", default=None, help="JSON array of project categories")
+def render_site_overview_cmd(
+    tiff: str,
+    results: str,
+    site_name: str,
+    survey_date: str,
+    output: str,
+    dpi: int,
+    max_width: int,
+    categories_json: str | None,
+) -> None:
+    """Render site overview PNG with heap overlays for the PDF report."""
+    click.echo(f"[heap-analyzer] render-site-overview: tiff={tiff}", err=True)
+
+    try:
+        import datetime as dt
+
+        from heap_analyzer.processing.volume import HeapMetrics
+        from heap_analyzer.report.map_renderer import HeapRenderInfo, MapRenderer
+
+        emit_progress("render_overview", 0.0, "Caricamento dati...")
+
+        data = json.loads(Path(results).read_text(encoding="utf-8"))
+        metrics = [HeapMetrics(**hm) for hm in data["heap_metrics"]]
+
+        # Parse categories
+        project_categories: list[str] = []
+        if categories_json:
+            project_categories = json.loads(categories_json)
+
+        # Build HeapRenderInfo list
+        heaps = [
+            HeapRenderInfo(
+                heap_id=m.heap_id,
+                label=m.label,
+                polygon_geojson=m.polygon_geojson,
+                category=None,  # classification comes from DB, not results.json
+            )
+            for m in metrics
+        ]
+
+        parsed_date = dt.date.fromisoformat(survey_date)
+
+        emit_progress("render_overview", 20.0, "Rendering panoramica...")
+
+        renderer = MapRenderer()
+        renderer.render_site_overview(
+            tiff_path=Path(tiff),
+            heaps=heaps,
+            project_categories=project_categories,
+            site_name=site_name,
+            survey_date=parsed_date,
+            output_path=Path(output),
+            dpi=dpi,
+            max_width_px=max_width,
+        )
+
+        emit_progress("render_overview", 100.0, "Panoramica completata")
+        emit_result({"output_path": output})
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("RENDER_OVERVIEW_FAILED", str(exc))
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
+@main.command("render-heap-detail")
+@click.option("--tiff", required=True, type=click.Path(exists=True), help="Path to GeoTIFF")
+@click.option("--results", required=True, type=click.Path(exists=True), help="Path to results.json")
+@click.option("--heap-id", required=True, type=int, help="Heap ID to render")
+@click.option("--output", required=True, type=click.Path(), help="Output PNG path")
+@click.option("--dpi", default=200, type=int, help="Output DPI")
+@click.option("--padding", default=25.0, type=float, help="Padding around polygon (%)")
+@click.option("--categories-json", default=None, help="JSON array of project categories")
+def render_heap_detail_cmd(
+    tiff: str,
+    results: str,
+    heap_id: int,
+    output: str,
+    dpi: int,
+    padding: float,
+    categories_json: str | None,
+) -> None:
+    """Render a heap detail PNG for the PDF report."""
+    click.echo(f"[heap-analyzer] render-heap-detail: heap_id={heap_id}", err=True)
+
+    try:
+        from heap_analyzer.processing.volume import HeapMetrics
+        from heap_analyzer.report.map_renderer import (
+            HeapDetailMetrics,
+            HeapRenderInfo,
+            MapRenderer,
+        )
+
+        emit_progress("render_detail", 0.0, "Caricamento dati...")
+
+        data = json.loads(Path(results).read_text(encoding="utf-8"))
+        all_metrics = [HeapMetrics(**hm) for hm in data["heap_metrics"]]
+
+        target = None
+        for m in all_metrics:
+            if m.heap_id == heap_id:
+                target = m
+                break
+
+        if target is None:
+            emit_error("HEAP_NOT_FOUND", f"Cumulo {heap_id} non trovato nei risultati")
+            sys.exit(1)
+
+        project_categories: list[str] = []
+        if categories_json:
+            project_categories = json.loads(categories_json)
+
+        heap_info = HeapRenderInfo(
+            heap_id=target.heap_id,
+            label=target.label,
+            polygon_geojson=target.polygon_geojson,
+            category=None,
+        )
+
+        detail_metrics = HeapDetailMetrics(
+            volume_m3=target.volume_m3,
+            max_height_m=target.max_height_m,
+            mean_height_m=target.mean_height_m,
+            planimetric_area_m2=target.planimetric_area_m2,
+        )
+
+        emit_progress("render_detail", 20.0, "Rendering dettaglio cumulo...")
+
+        renderer = MapRenderer()
+        renderer.render_heap_detail(
+            tiff_path=Path(tiff),
+            heap=heap_info,
+            heap_metrics=detail_metrics,
+            project_categories=project_categories,
+            output_path=Path(output),
+            dpi=dpi,
+            padding_percent=padding,
+        )
+
+        emit_progress("render_detail", 100.0, "Dettaglio completato")
+        emit_result({"output_path": output, "heap_id": heap_id})
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        emit_error("RENDER_DETAIL_FAILED", str(exc))
+        click.echo(f"[heap-analyzer] ERROR: {exc}", err=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+
 @main.command("cross-section")
 @click.option("--dsm", required=True, type=click.Path(exists=True), help="Path to DSM GeoTIFF")
 @click.option("--dtm", required=True, type=click.Path(exists=True), help="Path to DTM GeoTIFF")

@@ -34,6 +34,7 @@ vlm = [
 dev = [
     "pytest>=7.0",
     "pytest-cov",
+    "pypdf>=4.0",
     "ruff",
     "mypy",
 ]
