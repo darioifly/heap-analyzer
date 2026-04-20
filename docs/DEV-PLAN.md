@@ -320,6 +320,22 @@ heap-analyzer/
 - **Done**: classificazione visibile, override OK, workflow manuale fluido con hotkey, filtro categoria OK
 - **Files**: `frontend/.../heaps/MaterialClassification.tsx`, `QuickClassifyView.tsx`, `processing/ClassificationDialog.tsx`
 
+### F4.S05 — Validazione VLM della Segmentazione (QA)
+- **Deps**: F4.S01, F4.S02, F2.S10 (DTM fix)
+- **Do**: nuovo passaggio QA post-segmentazione. Per ogni cumulo rilevato: crop ortofoto bbox + margine 10% con contorno poligono sovrapposto → VLM con prompt binario "valido|falso|incerto + confidenza 0-1 + motivazione breve" (falsi tipici su siti industriali: binari, strade, marciapiedi, ombre, muri). Salva in DB `heaps.vlm_validation_label` TEXT + `heaps.vlm_validation_score` REAL + `heaps.vlm_validation_reason` TEXT. UI: badge rosso/giallo/verde nella heap list, click apre preview con crop + motivazione, bottone "Escludi" o "Conferma". Opzione avanzata: immagine ibrida RGB + nDSM colormap per sfruttare info altezza (testare se Qwen3-VL-8B la gestisce).
+- **Done**: validazione eseguita per tutti i cumuli, badge visibili, workflow di review funzionante, accuracy misurabile su dataset reale (falsi positivi scartati rispetto a ground truth manuale).
+- **Files**: `python-engine/.../classification/vlm_validator.py`, `tests/test_vlm_validator.py`, `frontend/.../heaps/ValidationBadge.tsx`, `ValidationReviewDialog.tsx`
+- **Rationale**: dataset reale Pittini (260330 Acciaieria) ha prodotto cumuli con falsi positivi su binari/strade. F2.S10 fix DTM ha ridotto il problema (da 21 a 16 rilevamenti, con eliminazione di molti FP), ma VLM come safety net cattura errori sistematici residui che l'algoritmo non auto-diagnostica.
+
+---
+
+## FASE 2b — Import Flussi Alternativi
+
+### F2.S10 — Import da cartella DJI Terra ✅ DONE
+- **Do**: scanner cartella DJI (`map/dsm.tif`, `map/result.tif`, `cloud_merged.las`), DJITerraManifest Pydantic, CLI `scan-dji-terra`. Pipeline accetta `precomputed_dsm_path` per saltare la generazione DSM. DTM usa classificazione ASPRS ground (class=2) dal LAS quando disponibile (fallback: morfologico). DB: `surveys.source_type` e `surveys.dji_folder_path`. IPC `dji:scanFolder`/`dji:importSurvey`. UI `ImportDJIDialog` con toggle "Usa DSM DJI" (ON default) e "Copia file" (OFF default).
+- **Impact measured**: su sito reale Acciaieria Udine, cumuli 21→16 (FP binari rimossi), volume 5084→16760 m³ (DTM non tronca più cime), durata 516→304 s.
+- **Files**: `python-engine/.../io/dji_terra_scanner.py`, `.../processing/dtm.py` (+strategy), `electron/src/ipc/dji-handlers.ts`, `frontend/.../surveys/ImportDJIDialog.tsx`
+
 ---
 
 ## FASE 5 — Report PDF (3 task)
