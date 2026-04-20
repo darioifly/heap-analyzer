@@ -47,3 +47,8 @@ where = ["src"]
 
 [tool.setuptools.package-dir]
 "" = "src"
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: end-to-end or real-dataset tests (run explicitly with -m slow)",
+]
