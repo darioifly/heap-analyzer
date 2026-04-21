@@ -284,6 +284,24 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         octree.material.shape = PointShape.CIRCLE;
         octree.material.pointColorType = PointColorType.RGB;
 
+        // Bypass potree-core's sRGB/linear conversion — its shader swaps
+        // the fromLinear/toLinear conditions so with the default
+        // inputColorEncoding=SRGB + outputColorEncoding=LINEAR every rgba
+        // channel goes through fromLinear(x) (a linear→sRGB transform)
+        // even though the data is ALREADY sRGB. That amplifies mid-tones
+        // toward 1.0 and an entire scrap-yard cloud looks chalk white.
+        // Setting both encodings to LINEAR (0) skips both #if blocks.
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const matObj = octree.material as unknown as {
+          inputColorEncoding?: number;
+          outputColorEncoding?: number;
+          needsUpdate?: boolean;
+        };
+        matObj.inputColorEncoding = 0; // ColorEncoding.LINEAR
+        matObj.outputColorEncoding = 0; // ColorEncoding.LINEAR
+        matObj.needsUpdate = true;
+        /* eslint-enable @typescript-eslint/no-explicit-any */
+
         scene.add(octree);
         octreeRef.current = octree;
 
