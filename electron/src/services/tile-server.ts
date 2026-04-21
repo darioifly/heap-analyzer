@@ -60,15 +60,29 @@ export class TileServer {
   // ---------------------------------------------------------------------------
 
   private setupMiddleware(): void {
-    this.app.use((_req: Request, res: Response, next) => {
+    this.app.use((req: Request, res: Response, next) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
+      // potree-core issues Range-requests for octree/hierarchy chunks with
+      // a custom Content-Type; that promotes the request to a CORS-
+      // "non-simple" fetch, which needs a preflight OPTIONS to succeed
+      // before the GET is sent. Without these two headers (and an OPTIONS
+      // short-circuit below) the browser blocks the GET with
+      //   "Response to preflight request doesn't pass access control check"
+      // and the 3D viewer never loads hierarchy.bin.
+      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Range, Accept, Origin',
+      );
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
       // no-cache forces the browser/OL to revalidate before serving from
-      // cache. Without this, regenerating tile pyramids (e.g. after fixing
-      // a tile-pasting bug) is invisible to the operator because the 24h
-      // max-age tiles remain cached. sendFile still sets Last-Modified so
-      // revalidation hits the server and returns 304 when unchanged —
-      // cheap in practice, eliminates the stale-tile class of bug.
+      // cache. Without this, regenerating tile pyramids is invisible to
+      // the operator because the 24h max-age tiles remain cached.
       res.setHeader('Cache-Control', 'no-cache');
+      if (req.method === 'OPTIONS') {
+        res.status(204).end();
+        return;
+      }
       next();
     });
   }
