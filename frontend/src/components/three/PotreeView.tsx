@@ -419,6 +419,95 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
     }
   }, [pointBudget]);
 
+  // Original rgba buffers per node, keyed by node.name. We keep a copy so
+  // switching from elevation/heap back to RGB restores the photographed
+  // colours. With Potree 2.0 (newFormat=true) the shader does
+  // `vColor = rgba` unconditionally — the color_type_* shader defines are
+  // ignored — so the only way to re-colour the cloud is to overwrite the
+  // rgba attribute on the CPU side.
+  const originalRgbaRef = useRef<Map<string, Uint8Array>>(new Map());
+
+  const applyCpuColorMode = useCallback(() => {
+    const octree = octreeRef.current;
+    if (!octree) return;
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const visibleNodes =
+      (octree as unknown as { visibleNodes?: Array<any> }).visibleNodes ?? [];
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    const zRange = pointZRangeRef.current;
+    const zMin = zRange?.min ?? 0;
+    const zSpan = Math.max((zRange?.max ?? 100) - zMin, 0.01);
+
+    let nodesUpdated = 0;
+    for (const vn of visibleNodes) {
+      const node = vn.geometryNode ?? vn.node ?? vn;
+      const geom = node?.geometry;
+      if (!geom?.attributes?.rgba || !geom?.attributes?.position) continue;
+      const rgba = geom.attributes.rgba;
+      const pos = geom.attributes.position;
+      const rgbaArr = rgba.array as Uint8Array;
+      const posArr = pos.array as Float32Array;
+      const count = rgbaArr.length / 4;
+      const nodeKey: string = node.name ?? String(node.id ?? Math.random());
+
+      // Cache the original (photographed) rgba on first sight.
+      if (!originalRgbaRef.current.has(nodeKey)) {
+        originalRgbaRef.current.set(nodeKey, new Uint8Array(rgbaArr));
+      }
+      const original = originalRgbaRef.current.get(nodeKey)!;
+
+      if (colorMode === "rgb" || colorMode === "heap") {
+        // Restore originals. (Heap colouring is handled by the 3D cage
+        // overlays, not by recolouring points — that would require
+        // point-in-polygon tests against every visible heap.)
+        rgbaArr.set(original);
+      } else if (colorMode === "elevation") {
+        // Viridis-ish gradient: low Z = purple/blue, mid = green, high = yellow.
+        for (let i = 0; i < count; i++) {
+          const z = posArr[i * 3 + 2];
+          const t = Math.max(0, Math.min(1, (z - zMin) / zSpan));
+          // 3-stop gradient: 0=(68,1,84) 0.5=(33,145,140) 1=(253,231,37)
+          let r: number, g: number, b: number;
+          if (t < 0.5) {
+            const u = t * 2;
+            r = 68 * (1 - u) + 33 * u;
+            g = 1 * (1 - u) + 145 * u;
+            b = 84 * (1 - u) + 140 * u;
+          } else {
+            const u = (t - 0.5) * 2;
+            r = 33 * (1 - u) + 253 * u;
+            g = 145 * (1 - u) + 231 * u;
+            b = 140 * (1 - u) + 37 * u;
+          }
+          rgbaArr[i * 4 + 0] = r;
+          rgbaArr[i * 4 + 1] = g;
+          rgbaArr[i * 4 + 2] = b;
+          // rgbaArr[i * 4 + 3] stays 0 — shader discards alpha anyway.
+        }
+      }
+      rgba.needsUpdate = true;
+      nodesUpdated++;
+    }
+    if (nodesUpdated > 0) {
+      console.log(
+        "[PotreeView] applied CPU color mode",
+        colorMode,
+        "to",
+        nodesUpdated,
+        "visible nodes",
+      );
+    }
+  }, [colorMode]);
+
+  // Re-apply on color-mode change + every time the set of visible nodes
+  // grows (new nodes loaded during pan/zoom would otherwise render in
+  // whatever colour came out of the decoder, not the requested mode).
+  useEffect(() => {
+    applyCpuColorMode();
+    const id = setInterval(applyCpuColorMode, 500);
+    return () => clearInterval(id);
+  }, [applyCpuColorMode]);
+
   // ——— 4. Color mode ———
   useEffect(() => {
     const octree = octreeRef.current;
