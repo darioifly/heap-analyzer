@@ -14,6 +14,7 @@ interface UiStore {
   colorMode: ColorMode;
   showBasePlane: boolean;
   showHeapOverlay3D: boolean;
+  showNdsmHeatmap3D: boolean;
   pointBudget: number;
   cameraPreset: CameraPreset | null;
   centerOnSelectionRequested: number;
@@ -27,6 +28,7 @@ interface UiStore {
   setColorMode: (m: ColorMode) => void;
   toggleBasePlane: () => void;
   toggleHeapOverlay3D: () => void;
+  toggleNdsmHeatmap3D: () => void;
   setPointBudget: (n: number) => void;
   applyCameraPreset: (p: CameraPreset) => void;
   clearCameraPreset: () => void;
@@ -42,6 +44,7 @@ export const useUiStore = create<UiStore>((set) => ({
   colorMode: "rgb",
   showBasePlane: true,
   showHeapOverlay3D: true,
+  showNdsmHeatmap3D: false,
   pointBudget: 2_000_000,
   cameraPreset: null,
   centerOnSelectionRequested: 0,
@@ -68,6 +71,8 @@ export const useUiStore = create<UiStore>((set) => ({
   setColorMode: (m) => set({ colorMode: m }),
   toggleBasePlane: () => set((s) => ({ showBasePlane: !s.showBasePlane })),
   toggleHeapOverlay3D: () => set((s) => ({ showHeapOverlay3D: !s.showHeapOverlay3D })),
+  toggleNdsmHeatmap3D: () =>
+    set((s) => ({ showNdsmHeatmap3D: !s.showNdsmHeatmap3D })),
   setPointBudget: (n) => set({ pointBudget: n }),
   applyCameraPreset: (p) => set({ cameraPreset: p }),
   clearCameraPreset: () => set({ cameraPreset: null }),

@@ -52,6 +52,7 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
   const animationFrameRef = useRef<number | null>(null);
   const boundsRef = useRef<BoundingBox3D | null>(null);
   const basePlaneRef = useRef<THREE.Mesh | null>(null);
+  const heatmapPlaneRef = useRef<THREE.Mesh | null>(null);
   const heapOverlayGroupRef = useRef<THREE.Group | null>(null);
 
   const survey = useSurveyStore((s) => s.surveys.find((sv) => sv.id === surveyId));
@@ -65,6 +66,7 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
 
   const colorMode = useUiStore((s) => s.colorMode);
   const showBasePlane = useUiStore((s) => s.showBasePlane);
+  const showNdsmHeatmap3D = useUiStore((s) => s.showNdsmHeatmap3D);
   const showHeapOverlay3D = useUiStore((s) => s.showHeapOverlay3D);
   const pointBudget = useUiStore((s) => s.pointBudget);
   const cameraPreset = useUiStore((s) => s.cameraPreset);
@@ -471,24 +473,24 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         // point-in-polygon tests against every visible heap.)
         rgbaArr.set(original);
       } else if (colorMode === "elevation") {
-        // Turbo-style 5-stop gradient. Turbo is perceptually uniform AND
-        // vivid across the full range — unlike viridis, the low end is a
-        // bright blue instead of a saturated purple, so the ground plane
-        // doesn't collapse into one dominant colour when the camera looks
-        // straight down at a mostly-flat site.
+        // Classic rainbow / jet gradient — chosen over viridis and turbo
+        // because both of those have a saturated purple (#30123b / #44015a)
+        // at t=0 that the operator read as "everything is purple" on a
+        // mostly-flat site. A clean bright blue ground makes the ramp
+        // read as an actual height map.
         //
-        // Stops (from Google's turbo colour map):
-        //   0.00  (48, 18, 59)    deep blue
-        //   0.25  ( 75, 175, 225) cyan
-        //   0.50  (117, 221, 108) green
-        //   0.75  (249, 210,  62) orange-yellow
-        //   1.00  (140, 40,  40)  dark red
+        // Stops:
+        //   0.00  (  0,   0, 200) bright blue
+        //   0.25  (  0, 200, 255) cyan
+        //   0.50  (  0, 220,  60) green
+        //   0.75  (255, 220,   0) yellow
+        //   1.00  (220,   0,   0) red
         const stops = [
-          [48, 18, 59],
-          [75, 175, 225],
-          [117, 221, 108],
-          [249, 210, 62],
-          [140, 40, 40],
+          [0, 0, 200],
+          [0, 200, 255],
+          [0, 220, 60],
+          [255, 220, 0],
+          [220, 0, 0],
         ];
         for (let i = 0; i < count; i++) {
           const z = posArr[i * 3 + 2];
@@ -603,6 +605,79 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
     scene.add(plane);
     basePlaneRef.current = plane;
   }, [showBasePlane, survey?.baseElevation, survey?.id, isLoading]);
+
+  // ——— 5b. nDSM heatmap overlay ———
+  // Loads the precomputed ndsm_heatmap.png (colour-ramped nDSM) served
+  // by the tile server and projects it onto a flat plane at the base
+  // elevation. Lets the operator read heights at a glance instead of
+  // fighting with the point-cloud colour ramp.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    const disposeHeatmap = () => {
+      if (heatmapPlaneRef.current) {
+        scene.remove(heatmapPlaneRef.current);
+        heatmapPlaneRef.current.geometry.dispose();
+        const m = heatmapPlaneRef.current.material as THREE.MeshBasicMaterial;
+        if (m.map) m.map.dispose();
+        m.dispose();
+        heatmapPlaneRef.current = null;
+      }
+    };
+
+    disposeHeatmap();
+    if (!showNdsmHeatmap3D || !boundsRef.current || !survey) return;
+
+    const bounds = boundsRef.current;
+    const baseZ = survey.baseElevation ?? bounds.min[2];
+    const sizeX = bounds.max[0] - bounds.min[0];
+    const sizeY = bounds.max[1] - bounds.min[1];
+    const centerX = (bounds.min[0] + bounds.max[0]) / 2;
+    const centerY = (bounds.min[1] + bounds.max[1]) / 2;
+
+    let cancelled = false;
+    (async () => {
+      const baseUrl = await window.api.tiles.getBaseUrl();
+      if (cancelled) return;
+      const url = `${baseUrl}/heatmap/${survey.id}.png?v=${Date.now()}`;
+      const loader = new THREE.TextureLoader();
+      loader.load(
+        url,
+        (texture) => {
+          if (cancelled) {
+            texture.dispose();
+            return;
+          }
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          const geom = new THREE.PlaneGeometry(sizeX, sizeY, 1, 1);
+          const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            opacity: 0.75,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          });
+          const plane = new THREE.Mesh(geom, mat);
+          // Slightly above base plane to avoid z-fighting.
+          plane.position.set(centerX, centerY, baseZ + 0.05);
+          scene.add(plane);
+          heatmapPlaneRef.current = plane;
+        },
+        undefined,
+        (err) => {
+          console.warn("[PotreeView] heatmap texture load failed:", err);
+        },
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+      disposeHeatmap();
+    };
+  }, [showNdsmHeatmap3D, survey?.baseElevation, survey?.id, isLoading]);
 
   // ——— 6. Heap overlays (extruded prisms) ———
   const updateHeapOverlays = useCallback(() => {

@@ -3,7 +3,7 @@
  * Color mode, camera presets, base plane toggle, heap overlay toggle, point budget.
  */
 
-import { ArrowUp, ArrowRight, RotateCcw, Crosshair, Grid3X3, Layers } from "lucide-react";
+import { ArrowUp, ArrowRight, RotateCcw, Crosshair, Grid3X3, Layers, Thermometer } from "lucide-react";
 import { useUiStore } from "@/stores/uiStore";
 import { useHeapStore } from "@/stores/heapStore";
 import type { ColorMode } from "@/stores/uiStore";
@@ -21,6 +21,8 @@ export function Toolbar3D() {
   const toggleBasePlane = useUiStore((s) => s.toggleBasePlane);
   const showHeapOverlay3D = useUiStore((s) => s.showHeapOverlay3D);
   const toggleHeapOverlay3D = useUiStore((s) => s.toggleHeapOverlay3D);
+  const showNdsmHeatmap3D = useUiStore((s) => s.showNdsmHeatmap3D);
+  const toggleNdsmHeatmap3D = useUiStore((s) => s.toggleNdsmHeatmap3D);
   const pointBudget = useUiStore((s) => s.pointBudget);
   const setPointBudget = useUiStore((s) => s.setPointBudget);
   const applyCameraPreset = useUiStore((s) => s.applyCameraPreset);
@@ -75,6 +77,18 @@ export function Toolbar3D() {
           >
             <Layers size={14} strokeWidth={1.75} />
             Cumuli
+          </button>
+          <button
+            onClick={toggleNdsmHeatmap3D}
+            className={`flex items-center gap-2 text-xs px-2 py-1 rounded transition-colors ${
+              showNdsmHeatmap3D
+                ? "bg-evlos-700 text-evlos-100"
+                : "text-evlos-400 hover:text-evlos-200"
+            }`}
+            title="Sovrapponi heatmap altezza (nDSM) sul piano base"
+          >
+            <Thermometer size={14} strokeWidth={1.75} />
+            Heatmap nDSM
           </button>
         </div>
       </div>
