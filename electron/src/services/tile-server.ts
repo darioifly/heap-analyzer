@@ -62,7 +62,13 @@ export class TileServer {
   private setupMiddleware(): void {
     this.app.use((_req: Request, res: Response, next) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      // no-cache forces the browser/OL to revalidate before serving from
+      // cache. Without this, regenerating tile pyramids (e.g. after fixing
+      // a tile-pasting bug) is invisible to the operator because the 24h
+      // max-age tiles remain cached. sendFile still sets Last-Modified so
+      // revalidation hits the server and returns 304 when unchanged —
+      // cheap in practice, eliminates the stale-tile class of bug.
+      res.setHeader('Cache-Control', 'no-cache');
       next();
     });
   }
