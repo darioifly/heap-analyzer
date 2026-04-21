@@ -165,4 +165,65 @@ describe('DJI IPC handlers', () => {
     const createCall = vi.mocked(db.createSurvey).mock.calls[0][0];
     expect(createCall.processing_params).toBeNull();
   });
+
+  it('dji:importSurvey threads manualBaseElevation into processing_params', async () => {
+    const db = makeDbStub();
+    setupDjiHandlers(db);
+
+    await registered['dji:importSurvey'](null, {
+      projectId: 1,
+      folderPath: '/dji',
+      manifest: {
+        orthophoto_path: '/dji/ortho.tif',
+        dsm_path: '/dji/dsm.tif',
+        las_path: '/dji/cloud.las',
+        crs: 'EPSG:32633',
+        survey_date: '2026-03-30',
+        bbox: null,
+        has_ground_classification: true,
+        pipeline_complete: true,
+        warnings: [],
+      },
+      useDjiDsm: true,
+      copyFiles: false,
+      surveyDate: '2026-03-30',
+      operator: '',
+      manualBaseElevation: 215.911,
+    });
+
+    const createCall = vi.mocked(db.createSurvey).mock.calls[0][0];
+    expect(createCall.processing_params).not.toBeNull();
+    const parsed = JSON.parse(createCall.processing_params as string);
+    expect(parsed.manual_base_elevation).toBe(215.911);
+    expect(parsed.precomputed_dsm_path).toBe('/dji/dsm.tif');
+  });
+
+  it('dji:importSurvey skips manual_base_elevation when null', async () => {
+    const db = makeDbStub();
+    setupDjiHandlers(db);
+
+    await registered['dji:importSurvey'](null, {
+      projectId: 1,
+      folderPath: '/dji',
+      manifest: {
+        orthophoto_path: '/dji/ortho.tif',
+        dsm_path: '/dji/dsm.tif',
+        las_path: '/dji/cloud.las',
+        crs: null,
+        survey_date: null,
+        bbox: null,
+        has_ground_classification: false,
+        pipeline_complete: true,
+        warnings: [],
+      },
+      useDjiDsm: false,
+      copyFiles: false,
+      surveyDate: '2026-04-01',
+      operator: '',
+      manualBaseElevation: null,
+    });
+
+    const createCall = vi.mocked(db.createSurvey).mock.calls[0][0];
+    expect(createCall.processing_params).toBeNull();
+  });
 });

@@ -33,6 +33,9 @@ export interface ImportDjiSurveyRequest {
   copyFiles: boolean;
   surveyDate: string; // ISO YYYY-MM-DD
   operator: string;
+  /** Optional flat-DTM elevation in meters a.s.l. When set, overrides the
+   *  LAS-based DTM strategy so segmentation sees a correct nDSM from the start. */
+  manualBaseElevation: number | null;
 }
 
 export interface ImportDjiSurveyResponse {
@@ -100,11 +103,20 @@ export function setupDjiHandlers(dbService: DatabaseService): void {
         }
       }
 
-      // Bundle the precomputed DSM path into processing_params so the pipeline
-      // reads it via ProcessingConfig.precomputed_dsm_path.
-      const processingParams = dsmPath
-        ? JSON.stringify({ precomputed_dsm_path: dsmPath })
-        : null;
+      // Bundle ProcessingConfig overrides into processing_params so the
+      // pipeline picks them up via --config at processing time.
+      const paramsObj: Record<string, unknown> = {};
+      if (dsmPath) {
+        paramsObj.precomputed_dsm_path = dsmPath;
+      }
+      if (
+        request.manualBaseElevation !== null &&
+        Number.isFinite(request.manualBaseElevation)
+      ) {
+        paramsObj.manual_base_elevation = request.manualBaseElevation;
+      }
+      const processingParams =
+        Object.keys(paramsObj).length > 0 ? JSON.stringify(paramsObj) : null;
 
       const created: Survey = dbService.createSurvey({
         project_id: projectId,

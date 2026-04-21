@@ -55,6 +55,7 @@ export function ImportDJIDialog({
   const [copyFiles, setCopyFiles] = useState(false);
   const [surveyDate, setSurveyDate] = useState(todayIso());
   const [operator, setOperator] = useState("");
+  const [manualBaseElevation, setManualBaseElevation] = useState<string>("");
 
   const reset = () => {
     setStep("select");
@@ -65,6 +66,7 @@ export function ImportDJIDialog({
     setCopyFiles(false);
     setSurveyDate(todayIso());
     setOperator("");
+    setManualBaseElevation("");
   };
 
   const handleOpenChange = (value: boolean) => {
@@ -94,6 +96,16 @@ export function ImportDJIDialog({
     }
   };
 
+  const parsedManualBaseElevation = (): number | null => {
+    const s = manualBaseElevation.trim().replace(",", ".");
+    if (s === "") return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const manualBaseElevationInvalid =
+    manualBaseElevation.trim() !== "" && parsedManualBaseElevation() === null;
+
   const handleImport = async () => {
     if (!manifest) return;
     setStep("importing");
@@ -106,6 +118,7 @@ export function ImportDJIDialog({
         copyFiles,
         surveyDate,
         operator: operator.trim(),
+        manualBaseElevation: parsedManualBaseElevation(),
       });
       toast.success("Rilievo DJI Terra importato");
       onImported(surveyId);
@@ -122,7 +135,10 @@ export function ImportDJIDialog({
 
   const busy = step === "scanning" || step === "importing";
   const canImport =
-    step === "review" && manifest !== null && surveyDate !== "";
+    step === "review" &&
+    manifest !== null &&
+    surveyDate !== "" &&
+    !manualBaseElevationInvalid;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -287,6 +303,36 @@ export function ImportDJIDialog({
                     </span>
                   </span>
                 </label>
+              </div>
+
+              <div className="space-y-2 border-t border-border pt-3">
+                <Label htmlFor="dji-manual-base">
+                  Quota base fissa (m s.l.m.) — opzionale
+                </Label>
+                <Input
+                  id="dji-manual-base"
+                  type="text"
+                  inputMode="decimal"
+                  value={manualBaseElevation}
+                  onChange={(e) => setManualBaseElevation(e.target.value)}
+                  placeholder="Es. 215.911"
+                  className={
+                    manualBaseElevationInvalid ? "border-destructive" : ""
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se il sito ha un basamento piatto a quota nota (misurata in
+                  campo), inserisci qui la Z di riferimento. Il DTM sarà piatto
+                  a questo valore e i cumuli saranno segmentati sulla quota
+                  corretta. Se vuoto, la pipeline stima il DTM automaticamente
+                  dalla classificazione ground del LAS.
+                </p>
+                {manualBaseElevationInvalid && (
+                  <p className="text-xs text-destructive">
+                    Valore non valido: inserisci un numero (es. 215.911) o
+                    lascia vuoto.
+                  </p>
+                )}
               </div>
             </>
           )}

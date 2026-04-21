@@ -228,6 +228,8 @@ declare global {
           copyFiles: boolean;
           surveyDate: string;
           operator: string;
+          /** Optional flat-DTM elevation (m a.s.l.). null = auto strategy. */
+          manualBaseElevation: number | null;
         }) => Promise<{ surveyId: number }>;
       };
       settings: {
