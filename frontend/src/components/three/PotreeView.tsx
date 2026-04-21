@@ -254,46 +254,53 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         octree.material.shape = PointShape.CIRCLE;
         octree.material.pointColorType = PointColorType.RGB;
 
-        // Shift the octree so its center sits at the world origin. The LAS
-        // is in UTM (~351 000, 5 120 000, 210) which makes OrbitControls
-        // targets, damping math, and the directional light all misbehave in
-        // a way that leaves the cloud invisible. By moving the Object3D's
-        // position, three.js still renders the points at their absolute
-        // location (internal vertex data is unchanged), but the camera /
-        // controls / lights operate in a nice small local frame.
-        const bbAbs = octree.boundingBox;
-        const originShift = new THREE.Vector3(
-          (bbAbs.min.x + bbAbs.max.x) / 2,
-          (bbAbs.min.y + bbAbs.max.y) / 2,
-          (bbAbs.min.z + bbAbs.max.z) / 2,
-        );
-        console.log("[PotreeView] octree bbox min:", bbAbs.min, "max:", bbAbs.max);
-        console.log("[PotreeView] origin shift:", originShift);
-        octree.position.sub(originShift);
-        octree.updateMatrixWorld(true);
-
         scene.add(octree);
         octreeRef.current = octree;
 
-        // Local-space bounds after the shift (for camera presets / heap overlay).
-        const bounds: BoundingBox3D = {
-          min: [
-            bbAbs.min.x - originShift.x,
-            bbAbs.min.y - originShift.y,
-            bbAbs.min.z - originShift.z,
-          ],
-          max: [
-            bbAbs.max.x - originShift.x,
-            bbAbs.max.y - originShift.y,
-            bbAbs.max.z - originShift.z,
-          ],
-        };
-        boundsRef.current = bounds;
-        // Stash the shift so heap/section overlays can subtract it to land
-        // on the same local frame as the cloud.
-        (window as unknown as { __potreeOffset?: THREE.Vector3 }).__potreeOffset = originShift;
+        const bbLocal = octree.boundingBox;
+        octree.updateMatrixWorld(true);
+        const worldOffset = new THREE.Vector3().setFromMatrixPosition(
+          octree.matrixWorld,
+        );
+        // Diagnostic dump — log a lot so we can see which property actually
+        // carries the UTM offset in this potree-core version.
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const oct = octree as unknown as Record<string, any>;
+        console.log("[PotreeView] octree.position:", octree.position);
+        console.log("[PotreeView] octree.matrixWorld pos:", worldOffset);
+        console.log("[PotreeView] octree.boundingBox local:", bbLocal.min, bbLocal.max);
+        console.log("[PotreeView] octree.pcoGeometry?.offset:", oct.pcoGeometry?.offset);
+        console.log("[PotreeView] octree.pcoGeometry?.scale:", oct.pcoGeometry?.scale);
+        console.log("[PotreeView] octree.pcoGeometry?.boundingBox:", oct.pcoGeometry?.boundingBox);
+        console.log("[PotreeView] octree.pcoGeometry?.tightBoundingBox:", oct.pcoGeometry?.tightBoundingBox);
+        /* eslint-enable @typescript-eslint/no-explicit-any */
 
-        // Default camera position
+        // Compose bounds in whatever frame the cloud ACTUALLY renders in.
+        // Prefer the pcoGeometry.boundingBox (absolute/world) if present —
+        // that's the UTM bbox from metadata.json. Fall back to the local
+        // bbox + matrixWorld offset.
+        const pcoGeom = (octree as unknown as { pcoGeometry?: { boundingBox?: THREE.Box3; offset?: THREE.Vector3 } }).pcoGeometry;
+        let bounds: BoundingBox3D;
+        if (pcoGeom?.boundingBox && pcoGeom.boundingBox.min.x > 1000) {
+          // Looks like a world/UTM bbox.
+          bounds = {
+            min: [pcoGeom.boundingBox.min.x, pcoGeom.boundingBox.min.y, pcoGeom.boundingBox.min.z],
+            max: [pcoGeom.boundingBox.max.x, pcoGeom.boundingBox.max.y, pcoGeom.boundingBox.max.z],
+          };
+        } else if (pcoGeom?.offset) {
+          bounds = {
+            min: [bbLocal.min.x + pcoGeom.offset.x, bbLocal.min.y + pcoGeom.offset.y, bbLocal.min.z + pcoGeom.offset.z],
+            max: [bbLocal.max.x + pcoGeom.offset.x, bbLocal.max.y + pcoGeom.offset.y, bbLocal.max.z + pcoGeom.offset.z],
+          };
+        } else {
+          bounds = {
+            min: [bbLocal.min.x + worldOffset.x, bbLocal.min.y + worldOffset.y, bbLocal.min.z + worldOffset.z],
+            max: [bbLocal.max.x + worldOffset.x, bbLocal.max.y + worldOffset.y, bbLocal.max.z + worldOffset.z],
+          };
+        }
+        boundsRef.current = bounds;
+        console.log("[PotreeView] bounds used for camera:", bounds);
+
         applyCameraPreset("orbit", camera, controls, bounds);
 
         setIsLoading(false);
