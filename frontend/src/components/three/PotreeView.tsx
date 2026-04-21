@@ -435,8 +435,17 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
       (octree as unknown as { visibleNodes?: Array<any> }).visibleNodes ?? [];
     /* eslint-enable @typescript-eslint/no-explicit-any */
     const zRange = pointZRangeRef.current;
-    const zMin = zRange?.min ?? 0;
-    const zSpan = Math.max((zRange?.max ?? 100) - zMin, 0.01);
+    // For elevation coloring prefer the survey's base-elevation as zMin.
+    // With a known flat concrete basement (e.g. 215.911 m for Acciaieria)
+    // the cloud's absolute Z min (208 m, where fence posts and below-
+    // grade walls live) is uninteresting and compresses all the heap-top
+    // colours into the upper 30% of the viridis ramp. Using the base
+    // elevation clamps ground to t=0 (purple) and spreads heap heights
+    // (0..~23 m above ground) over the full gradient.
+    const zMinRaw = zRange?.min ?? 0;
+    const zMax = zRange?.max ?? 100;
+    const zMin = survey?.baseElevation ?? zMinRaw;
+    const zSpan = Math.max(zMax - zMin, 0.01);
 
     let nodesUpdated = 0;
     for (const vn of visibleNodes) {
@@ -494,10 +503,14 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         colorMode,
         "to",
         nodesUpdated,
-        "visible nodes",
+        "visible nodes (zMin=",
+        zMin.toFixed(2),
+        "zMax=",
+        zMax.toFixed(2),
+        ")",
       );
     }
-  }, [colorMode]);
+  }, [colorMode, survey?.baseElevation]);
 
   // Re-apply on color-mode change + every time the set of visible nodes
   // grows (new nodes loaded during pan/zoom would otherwise render in
