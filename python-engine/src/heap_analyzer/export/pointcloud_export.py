@@ -397,9 +397,14 @@ def _downcast_rgb_uint16_to_uint8(potree_dir: Path) -> None:
 
     # --- Rewrite hierarchy.bin byte offsets ---
     # Potree 2.0 hierarchy entry = type(u1) + childMask(u1) + numPoints(u4) +
-    # byteOffset(i8) + byteSize(i8) = 22 bytes. type=0 means a proxy entry
-    # whose byteOffset points into hierarchy.bin itself (don't scale those);
-    # type=1/2 are octree nodes (scale byteOffset and byteSize).
+    # byteOffset(i8) + byteSize(i8) = 22 bytes. Types (from potree-core's
+    # OctreeLoader.parseHierarchy):
+    #   0 = NORMAL node -> byteOffset in octree.bin (SCALE)
+    #   1 = LEAF   node -> byteOffset in octree.bin (SCALE)
+    #   2 = PROXY node -> byteOffset in hierarchy.bin itself (DO NOT SCALE)
+    # The root node is typically type 0 — a bug that excluded type 0 left
+    # its byteOffset pointing past EOF of the shrunken octree.bin, causing
+    # 416 Range Not Satisfiable on the very first point load.
     hier_path = potree_dir / "hierarchy.bin"
     if hier_path.exists():
         hier_bytes = hier_path.read_bytes()
@@ -414,7 +419,9 @@ def _downcast_rgb_uint16_to_uint8(potree_dir: Path) -> None:
         )
         if len(hier_bytes) % entry_dtype.itemsize == 0:
             entries = np.frombuffer(hier_bytes, dtype=entry_dtype).copy()
-            is_octree_node = entries["type"] != 0
+            # Scale everything EXCEPT proxies (type == 2). Both normal (0)
+            # and leaf (1) entries point into octree.bin.
+            is_octree_node = entries["type"] != 2
             scale_num = np.int64(new_size)
             scale_den = np.int64(old_size)
             entries["byteOffset"][is_octree_node] = (
@@ -424,6 +431,12 @@ def _downcast_rgb_uint16_to_uint8(potree_dir: Path) -> None:
                 entries["byteSize"][is_octree_node] * scale_num // scale_den
             )
             hier_path.write_bytes(entries.tobytes())
+            # Quick sanity log for debugging.
+            type_counts = np.bincount(entries["type"], minlength=3)
+            _log.info(
+                "Rescaled hierarchy.bin: %d entries (type 0=%d, type 1=%d, type 2=%d)",
+                len(entries), int(type_counts[0]), int(type_counts[1]), int(type_counts[2]),
+            )
         else:
             _log.warning(
                 "hierarchy.bin size %d not a multiple of entry size %d — skipping rescale",
