@@ -86,38 +86,44 @@ def estimate_dtm_from_ground_classification(
     dsm_shape: tuple[int, int],
     dsm_transform: rasterio.Affine,
     opening_kernel_m: float = 150.0,
+    use_classification_filter: bool = True,
 ) -> tuple[np.ndarray, float] | None:
-    """Build a DTM by rasterising ASPRS class=2 ground points from a LAS file.
+    """Build a DTM by rasterising points from a LAS file.
 
-    For each DSM cell, the minimum Z among ground-classified points landing
-    in that cell is recorded. Empty cells are filled by nearest neighbour
-    (Voronoi fill). A morphological opening with a kernel larger than the
-    widest heap is then applied to strip false-positive ground classifications
-    (DJI Terra often labels the flat top of scrap piles as class=2, which
-    would otherwise leave the DTM sitting on top of the piles).
+    For each DSM cell, the minimum Z among candidate points landing in that
+    cell is recorded. Empty cells are filled by nearest neighbour (Voronoi
+    fill). A morphological opening with a kernel larger than the widest heap
+    is then applied to strip local highs (DJI Terra often labels the flat top
+    of scrap piles as class=2, which would otherwise leave the DTM sitting on
+    top of the piles).
 
     Args:
-        las_path: Path to the LAS/LAZ file (must carry classification).
+        las_path: Path to the LAS/LAZ file.
         dsm_shape: (height, width) of the DSM grid.
         dsm_transform: rasterio Affine transform of the DSM (for pixel lookup).
         opening_kernel_m: Opening kernel in meters. Should exceed the widest
             expected heap width. Set to 0 to disable the opening step.
+        use_classification_filter: When True (default), only ASPRS class=2
+            ground points are rasterised. When False, ALL points contribute
+            to the min-Z-per-cell raster — used when the cloud's classification
+            is unreliable (e.g. DJI Terra mislabelling pile tops as ground).
 
     Returns:
-        Tuple of (dtm_array, coverage_ratio) or ``None`` if the file has no
-        classification field, no ground points were found, or coverage is
-        below :data:`_GROUND_COVERAGE_THRESHOLD`. A ``None`` return is the
-        caller's signal to fall back to morphological estimation.
+        Tuple of (dtm_array, coverage_ratio) or ``None`` if the classification
+        filter was requested but the file has no classification field, no
+        points were rasterised, or coverage is below
+        :data:`_GROUND_COVERAGE_THRESHOLD`. A ``None`` return is the caller's
+        signal to fall back to morphological estimation.
     """
     height, width = dsm_shape
-    # Use +inf as sentinel for "no ground seen"; np.minimum vs inf preserves actual minima.
+    # Use +inf as sentinel for "no point seen"; np.minimum vs inf preserves actual minima.
     min_z = np.full((height, width), np.inf, dtype=np.float64)
-    ground_points_seen = 0
+    points_seen = 0
 
     try:
         with laspy.open(str(las_path)) as reader:
             dim_names = [d.name for d in reader.header.point_format.dimensions]
-            if "classification" not in dim_names:
+            if use_classification_filter and "classification" not in dim_names:
                 logger.info(
                     "LAS %s has no classification field — skipping ground strategy",
                     las_path,
@@ -127,14 +133,18 @@ def estimate_dtm_from_ground_classification(
             inv_transform = ~dsm_transform
 
             for chunk in reader.chunk_iterator(_LAS_CHUNK_SIZE):
-                cls = np.asarray(chunk.classification, dtype=np.uint8)
-                mask = cls == _ASPRS_GROUND
-                if not np.any(mask):
-                    continue
-
-                xs = np.asarray(chunk.x, dtype=np.float64)[mask]
-                ys = np.asarray(chunk.y, dtype=np.float64)[mask]
-                zs = np.asarray(chunk.z, dtype=np.float64)[mask]
+                if use_classification_filter:
+                    cls = np.asarray(chunk.classification, dtype=np.uint8)
+                    mask = cls == _ASPRS_GROUND
+                    if not np.any(mask):
+                        continue
+                    xs = np.asarray(chunk.x, dtype=np.float64)[mask]
+                    ys = np.asarray(chunk.y, dtype=np.float64)[mask]
+                    zs = np.asarray(chunk.z, dtype=np.float64)[mask]
+                else:
+                    xs = np.asarray(chunk.x, dtype=np.float64)
+                    ys = np.asarray(chunk.y, dtype=np.float64)
+                    zs = np.asarray(chunk.z, dtype=np.float64)
 
                 # Rasterio Affine multiplies as (x, y) -> (col, row).
                 cols_f, rows_f = inv_transform * (xs, ys)
@@ -150,24 +160,27 @@ def estimate_dtm_from_ground_classification(
                 rr = rows[in_bounds]
                 cc = cols[in_bounds]
                 zz = zs[in_bounds]
-                ground_points_seen += len(zz)
+                points_seen += len(zz)
 
                 # Cell-wise minimum Z. np.minimum.at handles duplicate indices.
                 np.minimum.at(min_z, (rr, cc), zz)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Ground-classification DTM failed to read LAS: %s", exc)
+        logger.warning("LAS-based DTM failed to read file: %s", exc)
         return None
 
-    if ground_points_seen == 0:
-        logger.info("LAS %s has zero ground-classified points", las_path)
+    if points_seen == 0:
+        mode = "ground-classified" if use_classification_filter else "any"
+        logger.info("LAS %s has zero %s points — skipping", las_path, mode)
         return None
 
-    # Coverage: fraction of cells that received at least one ground point.
+    # Coverage: fraction of cells that received at least one point.
     populated = np.isfinite(min_z)
     coverage = float(np.sum(populated)) / float(height * width)
+    mode_label = "Ground classification" if use_classification_filter else "All-points (no filter)"
     logger.debug(
-        "Ground classification: %d points in file, %.2f%% DSM coverage",
-        ground_points_seen,
+        "%s: %d points rasterised, %.2f%% DSM coverage",
+        mode_label,
+        points_seen,
         coverage * 100.0,
     )
 
@@ -399,12 +412,20 @@ def estimate_dtm(
             f"{base_elev:.2f} m.",
         )
 
-    # --- Strategy 3: Ground classification from LAS (F2.S10) ---
+    # --- Strategy 3: LAS-based DTM (F2.S10) ---
+    # When use_ground_classification=True (default): only ASPRS class=2 points.
+    # When False: all points (experimental — for clouds with unreliable classification).
     if las_path is not None and las_path.exists():
-        _progress(15, "Stima DTM da classificazione ground LAS...")
+        use_filter = config.use_ground_classification
+        _progress(
+            15,
+            "Stima DTM da classificazione ground LAS..." if use_filter
+            else "Stima DTM da tutti i punti LAS (no filtro classe)...",
+        )
         result = estimate_dtm_from_ground_classification(
             las_path, dsm.shape, dsm_transform,
             opening_kernel_m=config.ground_classification_opening_m,
+            use_classification_filter=use_filter,
         )
         if result is not None:
             dtm_ground, coverage = result
@@ -415,21 +436,27 @@ def estimate_dtm(
             finite = dtm_ground[np.isfinite(dtm_ground)]
             base_elev = float(np.percentile(finite, config.base_percentile))
 
-            _progress(95, "Scrittura DTM (classificazione ground)...")
+            label = "classificazione ground" if use_filter else "tutti i punti"
+            _progress(95, f"Scrittura DTM ({label})...")
             _write_dtm(output_path, dtm_ground.astype(np.float32), dsm_profile)
-            _progress(100, "DTM completato (classificazione ground)")
+            _progress(100, f"DTM completato ({label})")
             logger.info(
-                "DTM from ASPRS ground classification: coverage=%.1f%%, base=%.2f m",
+                "DTM from LAS (%s): coverage=%.1f%%, base=%.2f m",
+                "class=2" if use_filter else "all points",
                 coverage * 100.0, base_elev,
             )
             return DtmResult(
                 output_path=output_path,
                 method=DtmMethod.GROUND_CLASSIFICATION,
                 estimated_base_elevation=base_elev,
-                confidence=0.95,
+                confidence=0.95 if use_filter else 0.80,
                 notes=(
                     f"DTM generato da punti classificati come terreno nel LAS "
                     f"(ASPRS class=2, copertura {coverage * 100:.1f}%). "
+                    f"Quota base percentile {config.base_percentile}%: {base_elev:.2f} m."
+                ) if use_filter else (
+                    f"DTM generato da TUTTI i punti del LAS (no filtro classe, "
+                    f"copertura {coverage * 100:.1f}%). "
                     f"Quota base percentile {config.base_percentile}%: {base_elev:.2f} m."
                 ),
             )

@@ -196,6 +196,7 @@ class ProcessingPipeline:
         dtm_result: DtmResult = estimate_dtm(
             dsm_path, dtm_path, self.config,
             las_path=las_path,
+            manual_base_elevation=self.config.manual_base_elevation,
             progress_callback=dtm_progress,
         )
 

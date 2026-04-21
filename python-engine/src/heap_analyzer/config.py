@@ -47,3 +47,26 @@ class ProcessingConfig(BaseModel):
             "so a 150 m kernel is cheap. Set to 0 to disable."
         ),
     )
+    use_ground_classification: bool = Field(
+        default=True,
+        description=(
+            "When True, the LAS-based DTM strategy rasterises only points with "
+            "ASPRS classification=2 (ground). When False, ALL points are used "
+            "with the same min-Z-per-cell + opening pipeline — useful when the "
+            "cloud's classification is unreliable (e.g. DJI Terra marking pile "
+            "tops as ground)."
+        ),
+    )
+    manual_base_elevation: float | None = Field(
+        default=None,
+        description=(
+            "When set, the DTM is a flat raster at this Z (meters a.s.l.) and "
+            "all auto strategies (ground-classification, morphological, "
+            "peripheral) are skipped. Use this for sites with a known flat "
+            "concrete basement where auto strategies are fooled by low "
+            "outliers at the cloud's edges (roads, walls, noise). Unlike the "
+            "post-hoc BaseElevationControl slider, this is applied BEFORE "
+            "segmentation, so the resulting heap polygons reflect the correct "
+            "reference ground."
+        ),
+    )
