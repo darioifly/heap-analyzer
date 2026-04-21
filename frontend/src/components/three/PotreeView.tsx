@@ -471,26 +471,37 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         // point-in-polygon tests against every visible heap.)
         rgbaArr.set(original);
       } else if (colorMode === "elevation") {
-        // Viridis-ish gradient: low Z = purple/blue, mid = green, high = yellow.
+        // Turbo-style 5-stop gradient. Turbo is perceptually uniform AND
+        // vivid across the full range — unlike viridis, the low end is a
+        // bright blue instead of a saturated purple, so the ground plane
+        // doesn't collapse into one dominant colour when the camera looks
+        // straight down at a mostly-flat site.
+        //
+        // Stops (from Google's turbo colour map):
+        //   0.00  (48, 18, 59)    deep blue
+        //   0.25  ( 75, 175, 225) cyan
+        //   0.50  (117, 221, 108) green
+        //   0.75  (249, 210,  62) orange-yellow
+        //   1.00  (140, 40,  40)  dark red
+        const stops = [
+          [48, 18, 59],
+          [75, 175, 225],
+          [117, 221, 108],
+          [249, 210, 62],
+          [140, 40, 40],
+        ];
         for (let i = 0; i < count; i++) {
           const z = posArr[i * 3 + 2];
           const t = Math.max(0, Math.min(1, (z - zMin) / zSpan));
-          // 3-stop gradient: 0=(68,1,84) 0.5=(33,145,140) 1=(253,231,37)
-          let r: number, g: number, b: number;
-          if (t < 0.5) {
-            const u = t * 2;
-            r = 68 * (1 - u) + 33 * u;
-            g = 1 * (1 - u) + 145 * u;
-            b = 84 * (1 - u) + 140 * u;
-          } else {
-            const u = (t - 0.5) * 2;
-            r = 33 * (1 - u) + 253 * u;
-            g = 145 * (1 - u) + 231 * u;
-            b = 140 * (1 - u) + 37 * u;
-          }
-          rgbaArr[i * 4 + 0] = r;
-          rgbaArr[i * 4 + 1] = g;
-          rgbaArr[i * 4 + 2] = b;
+          const scaled = t * (stops.length - 1);
+          const lo = Math.floor(scaled);
+          const hi = Math.min(stops.length - 1, lo + 1);
+          const u = scaled - lo;
+          const c0 = stops[lo];
+          const c1 = stops[hi];
+          rgbaArr[i * 4 + 0] = c0[0] * (1 - u) + c1[0] * u;
+          rgbaArr[i * 4 + 1] = c0[1] * (1 - u) + c1[1] * u;
+          rgbaArr[i * 4 + 2] = c0[2] * (1 - u) + c1[2] * u;
           // rgbaArr[i * 4 + 3] stays 0 — shader discards alpha anyway.
         }
       }
