@@ -74,6 +74,11 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [visiblePoints, setVisiblePoints] = useState(0);
+  // Real UTM Z range parsed from metadata.json → position attribute.
+  // pcoGeometry.tightBoundingBox from potree-core is actually the cubic
+  // AABB (same 328 m on every axis), so it is useless for a meaningful
+  // elevation gradient — we need the actual point-attribute Z min/max.
+  const pointZRangeRef = useRef<{ min: number; max: number } | null>(null);
 
   // ——— 1. Scene setup (runs once per mount) ———
   useEffect(() => {
@@ -229,6 +234,31 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
               `metadata.json returned non-JSON content (first 80 chars: ${text.slice(0, 80).replace(/\s+/g, " ")}) — baseUrl=${baseUrl}`,
             );
           }
+          // Pull the real point Z range from the position attribute so the
+          // elevation color ramp actually spans the points.
+          try {
+            const meta = JSON.parse(text) as {
+              attributes?: Array<{
+                name: string;
+                min?: number[];
+                max?: number[];
+              }>;
+            };
+            const pos = meta.attributes?.find((a) => a.name === "position");
+            if (pos?.min && pos?.max && pos.min.length >= 3 && pos.max.length >= 3) {
+              pointZRangeRef.current = {
+                min: pos.min[2],
+                max: pos.max[2],
+              };
+              console.log(
+                "[PotreeView] point Z range (from metadata):",
+                pos.min[2], "→", pos.max[2],
+              );
+            }
+          } catch {
+            // metadata parse error is non-fatal; elevation mode will fall
+            // back to the bounding box.
+          }
         } catch (probeErr) {
           throw new Error(
             probeErr instanceof Error ? probeErr.message : String(probeErr),
@@ -336,22 +366,18 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         break;
       case "elevation": {
         octree.material.pointColorType = PointColorType.HEIGHT;
-        // Use the TIGHT bbox (actual min/max of real points) rather than the
-        // cubic AABB which PotreeConverter pads to a 328 m cube for octree
-        // indexing. With the cubic AABB, Z spans 208-536 m but the real
-        // points are at 208-238 m — the gradient gets compressed into the
-        // bottom 9% of the ramp and the whole cloud looks one colour.
-        /* eslint-disable @typescript-eslint/no-explicit-any */
-        const tight = (octree as unknown as { pcoGeometry?: { tightBoundingBox?: THREE.Box3 } })
-          .pcoGeometry?.tightBoundingBox;
-        /* eslint-enable @typescript-eslint/no-explicit-any */
-        const zMin = tight?.min.z ?? boundsRef.current?.min[2] ?? 0;
-        const zMax = tight?.max.z ?? boundsRef.current?.max[2] ?? 100;
+        // pcoGeometry.tightBoundingBox is the CUBIC AABB (0..328 on every
+        // axis) — useless for an elevation ramp. We read the real Z range
+        // directly from metadata.json's position attribute during load.
+        const real = pointZRangeRef.current;
+        const zMin = real?.min ?? boundsRef.current?.min[2] ?? 0;
+        const zMax = real?.max ?? boundsRef.current?.max[2] ?? 100;
         octree.material.heightMin = zMin;
         octree.material.heightMax = zMax;
         console.log(
-          "[PotreeView] elevation range (tight):",
+          "[PotreeView] elevation range:",
           zMin, "→", zMax,
+          "source:", real ? "metadata.position" : "bounds fallback",
         );
         break;
       }

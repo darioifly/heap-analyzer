@@ -285,6 +285,22 @@ def export_for_potree(
     with open(metadata_path, encoding="utf-8") as f:
         metadata = json.load(f)
 
+    # potree-core (the npm loader used by the frontend) only handles 8-bit
+    # RGB — it decodes the color buffer as Uint8Array. PotreeConverter 2.x
+    # emits 16-bit RGB whenever the source LAS has 16-bit RGB (the default
+    # for LAS 1.2+, including DJI Terra), so without this post-processing
+    # the cloud renders fully white in the 3D viewer. Downcast uint16 ->
+    # uint8 by keeping the high byte of each channel, then patch the byte
+    # offsets in hierarchy.bin and update metadata.json.
+    try:
+        if progress_callback:
+            progress_callback(99, "Conversione RGB uint16->uint8...")
+        _downcast_rgb_uint16_to_uint8(metadata_path.parent)
+        with open(metadata_path, encoding="utf-8") as f:
+            metadata = json.load(f)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("RGB downcast failed (continuing): %s", exc)
+
     # Extract info from metadata
     num_points = metadata.get("points", 0)
     bb = metadata.get("boundingBox", {})
@@ -302,4 +318,129 @@ def export_for_potree(
         num_points=num_points,
         bounds=bounds,
         success=True,
+    )
+
+
+def _downcast_rgb_uint16_to_uint8(potree_dir: Path) -> None:
+    """Rewrite octree.bin + hierarchy.bin + metadata.json so the rgb
+    attribute becomes uint8 (3 bytes/point) instead of uint16 (6 bytes).
+
+    potree-core's loader unconditionally decodes the color buffer as
+    Uint8Array, so a 16-bit RGB attribute lands in the wrong bytes and
+    every point renders saturated white. Keeping just the high byte of
+    each channel preserves the real color with negligible quality loss
+    (LAS typically stores 8-bit RGB shifted left by 8, so the low byte
+    is zero anyway).
+
+    The Potree 2.0 binary layout packs attributes contiguously per point.
+    When we shrink the rgb attribute, every point's stride changes, so
+    the byte offsets recorded in hierarchy.bin (for octree nodes) need
+    to be scaled by new_point_size / old_point_size.
+
+    Args:
+        potree_dir: Directory containing metadata.json, octree.bin,
+            hierarchy.bin.
+    """
+    import numpy as np
+
+    meta_path = potree_dir / "metadata.json"
+    with open(meta_path, encoding="utf-8") as f:
+        metadata = json.load(f)
+
+    attrs = metadata.get("attributes") or []
+    rgb_idx = next((i for i, a in enumerate(attrs) if a.get("name") == "rgb"), None)
+    if rgb_idx is None:
+        _log.debug("No rgb attribute found — skipping RGB downcast")
+        return
+    rgb_attr = attrs[rgb_idx]
+    if int(rgb_attr.get("elementSize", 2)) == 1:
+        _log.debug("RGB already 8-bit — skipping downcast")
+        return
+
+    old_size = sum(int(a.get("size", 0)) for a in attrs)
+    rgb_off = sum(int(a.get("size", 0)) for a in attrs[:rgb_idx])
+    rgb_old_bytes = int(rgb_attr.get("size", 6))  # expected 6
+    rgb_new_bytes = 3
+    new_size = old_size - rgb_old_bytes + rgb_new_bytes
+    _log.info(
+        "Downcasting rgb: point size %d -> %d bytes (rgb offset %d)",
+        old_size, new_size, rgb_off,
+    )
+
+    # --- Rewrite octree.bin ---
+    oct_path = potree_dir / "octree.bin"
+    raw_bytes = oct_path.read_bytes()
+    n_points = len(raw_bytes) // old_size
+    if n_points * old_size != len(raw_bytes):
+        _log.warning(
+            "octree.bin size %d is not a multiple of point size %d — aborting",
+            len(raw_bytes), old_size,
+        )
+        return
+    raw = np.frombuffer(raw_bytes, dtype=np.uint8).reshape(n_points, old_size)
+
+    new = np.empty((n_points, new_size), dtype=np.uint8)
+    # Bytes before rgb
+    if rgb_off > 0:
+        new[:, :rgb_off] = raw[:, :rgb_off]
+    # Keep the HIGH byte of each uint16 channel (little-endian: byte 1/3/5).
+    new[:, rgb_off + 0] = raw[:, rgb_off + 1]
+    new[:, rgb_off + 1] = raw[:, rgb_off + 3]
+    new[:, rgb_off + 2] = raw[:, rgb_off + 5]
+    # Bytes after rgb (rgb is last in our layout, so this is a no-op)
+    rest_old = rgb_off + rgb_old_bytes
+    rest_new = rgb_off + rgb_new_bytes
+    if old_size > rest_old:
+        new[:, rest_new:] = raw[:, rest_old:]
+
+    oct_path.write_bytes(new.tobytes())
+
+    # --- Rewrite hierarchy.bin byte offsets ---
+    # Potree 2.0 hierarchy entry = type(u1) + childMask(u1) + numPoints(u4) +
+    # byteOffset(i8) + byteSize(i8) = 22 bytes. type=0 means a proxy entry
+    # whose byteOffset points into hierarchy.bin itself (don't scale those);
+    # type=1/2 are octree nodes (scale byteOffset and byteSize).
+    hier_path = potree_dir / "hierarchy.bin"
+    if hier_path.exists():
+        hier_bytes = hier_path.read_bytes()
+        entry_dtype = np.dtype(
+            [
+                ("type", "u1"),
+                ("childMask", "u1"),
+                ("numPoints", "u4"),
+                ("byteOffset", "i8"),
+                ("byteSize", "i8"),
+            ]
+        )
+        if len(hier_bytes) % entry_dtype.itemsize == 0:
+            entries = np.frombuffer(hier_bytes, dtype=entry_dtype).copy()
+            is_octree_node = entries["type"] != 0
+            scale_num = np.int64(new_size)
+            scale_den = np.int64(old_size)
+            entries["byteOffset"][is_octree_node] = (
+                entries["byteOffset"][is_octree_node] * scale_num // scale_den
+            )
+            entries["byteSize"][is_octree_node] = (
+                entries["byteSize"][is_octree_node] * scale_num // scale_den
+            )
+            hier_path.write_bytes(entries.tobytes())
+        else:
+            _log.warning(
+                "hierarchy.bin size %d not a multiple of entry size %d — skipping rescale",
+                len(hier_bytes), entry_dtype.itemsize,
+            )
+
+    # --- Update metadata.json ---
+    rgb_attr["size"] = 3
+    rgb_attr["elementSize"] = 1
+    rgb_attr["type"] = "uint8"
+    # Values had a max around 65280 (255 << 8); high byte is the real 0-255 value.
+    rgb_attr["min"] = [max(0, int(v) >> 8) for v in rgb_attr.get("min", [0, 0, 0])]
+    rgb_attr["max"] = [min(255, int(v) >> 8) for v in rgb_attr.get("max", [255, 255, 255])]
+
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+
+    _log.info(
+        "RGB downcast complete: rewrote %d points in octree.bin", n_points,
     )
