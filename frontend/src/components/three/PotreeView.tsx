@@ -287,6 +287,53 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         scene.add(octree);
         octreeRef.current = octree;
 
+        // Diagnostic: log the material state so we can see what shader
+        // defines are actually active and whether the rgba attribute wired
+        // up. For 16-bit RGB LAS, potree-core's worker normalises to uint8
+        // and the shader (with newFormat=true) does `vColor = rgba`. If
+        // points render white, either (a) newFormat is false and the
+        // attribute name mismatches, or (b) some uniform is pinning the
+        // colour.
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const mat = octree.material as unknown as Record<string, unknown>;
+        console.log(
+          "[PotreeView] material.newFormat:",
+          mat.newFormat,
+          "pointColorType:",
+          mat.pointColorType,
+        );
+        console.log(
+          "[PotreeView] material keys:",
+          Object.keys(mat).filter((k) => !k.startsWith("_")).slice(0, 30),
+        );
+        // Log a couple of nodes' geometry attributes once they load.
+        setTimeout(() => {
+          const geomNodes = (octree as unknown as { visibleNodes?: Array<{ geometryNode?: { geometry?: { attributes?: Record<string, unknown> } } }> }).visibleNodes ?? [];
+          console.log("[PotreeView] visibleNodes.length:", geomNodes.length);
+          const first = geomNodes[0]?.geometryNode?.geometry?.attributes ?? {};
+          console.log("[PotreeView] first node attribute names:", Object.keys(first));
+          const rgba = (first as Record<string, unknown>)["rgba"] as
+            | { array?: Uint8Array; itemSize?: number; normalized?: boolean }
+            | undefined;
+          if (rgba?.array) {
+            const a = rgba.array;
+            console.log(
+              "[PotreeView] rgba sample (first 8 values):",
+              Array.from(a.slice(0, 8)),
+              "itemSize:",
+              rgba.itemSize,
+              "normalized:",
+              rgba.normalized,
+            );
+          } else {
+            console.warn(
+              "[PotreeView] rgba attribute MISSING on first node — here are the attributes:",
+              first,
+            );
+          }
+        }, 2000);
+        /* eslint-enable @typescript-eslint/no-explicit-any */
+
         const bbLocal = octree.boundingBox;
         octree.updateMatrixWorld(true);
         const worldOffset = new THREE.Vector3().setFromMatrixPosition(
