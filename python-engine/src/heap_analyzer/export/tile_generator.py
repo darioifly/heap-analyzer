@@ -111,49 +111,104 @@ def generate_tiles(
                     tile_max_y = bounds[3] - ty * tile_extent
                     tile_min_y = tile_max_y - tile_extent
 
-                    # Convert geographic bounds to pixel coordinates in source raster
-                    col_off, row_off = ~src.transform * (tile_min_x, tile_max_y)
-                    col_end, row_end = ~src.transform * (tile_max_x, tile_min_y)
+                    # Full tile pixel range in SOURCE pixels (may extend past raster).
+                    full_col_off_f, full_row_off_f = ~src.transform * (
+                        tile_min_x, tile_max_y
+                    )
+                    full_col_end_f, full_row_end_f = ~src.transform * (
+                        tile_max_x, tile_min_y
+                    )
+                    full_col_span = full_col_end_f - full_col_off_f
+                    full_row_span = full_row_end_f - full_row_off_f
 
-                    # Clamp to raster bounds
-                    col_off = max(0, int(round(col_off)))
-                    row_off = max(0, int(round(row_off)))
-                    col_end = min(width, int(round(col_end)))
-                    row_end = min(height, int(round(row_end)))
-
-                    win_width = col_end - col_off
-                    win_height = row_end - row_off
+                    # Read window = intersection with raster bounds.
+                    read_col_off = max(0, int(round(full_col_off_f)))
+                    read_row_off = max(0, int(round(full_row_off_f)))
+                    read_col_end = min(width, int(round(full_col_end_f)))
+                    read_row_end = min(height, int(round(full_row_end_f)))
+                    win_width = read_col_end - read_col_off
+                    win_height = read_row_end - read_row_off
 
                     if win_width <= 0 or win_height <= 0:
-                        # Empty tile — save transparent
+                        # Tile falls entirely outside the raster — transparent.
                         img = Image.new("RGBA", (tile_size, tile_size), (0, 0, 0, 0))
                     else:
-                        window = Window(col_off, row_off, win_width, win_height)
+                        # Where the intersection lands in the OUTPUT 256×256 tile.
+                        # Proportional to the full tile span so the raster's pixels
+                        # map 1:1 to their geographic position inside the tile —
+                        # anything not covered stays transparent. (The previous
+                        # implementation stretched the intersection to fill 256×256,
+                        # which misaligned polygon overlays at every zoom level
+                        # whenever the raster was non-square.)
+                        out_col_off = int(
+                            round(
+                                (read_col_off - full_col_off_f) / full_col_span * tile_size
+                            )
+                        )
+                        out_row_off = int(
+                            round(
+                                (read_row_off - full_row_off_f) / full_row_span * tile_size
+                            )
+                        )
+                        out_col_end = int(
+                            round(
+                                (read_col_end - full_col_off_f) / full_col_span * tile_size
+                            )
+                        )
+                        out_row_end = int(
+                            round(
+                                (read_row_end - full_row_off_f) / full_row_span * tile_size
+                            )
+                        )
+                        # Clamp to the 256×256 canvas — rounding can push endpoints
+                        # one pixel past tile_size when the read window aligns
+                        # exactly with the raster edge.
+                        out_col_off = max(0, min(tile_size, out_col_off))
+                        out_row_off = max(0, min(tile_size, out_row_off))
+                        out_col_end = max(out_col_off, min(tile_size, out_col_end))
+                        out_row_end = max(out_row_off, min(tile_size, out_row_end))
+                        out_w = max(1, out_col_end - out_col_off)
+                        out_h = max(1, out_row_end - out_row_off)
+
+                        window = Window(read_col_off, read_row_off, win_width, win_height)
                         data = src.read(
                             list(range(1, band_count + 1)),
                             window=window,
-                            out_shape=(band_count, tile_size, tile_size),
+                            out_shape=(band_count, out_h, out_w),
                             resampling=Resampling.bilinear,
                         )
-                        # Convert to uint8 if needed
+
                         if data.dtype != np.uint8:
-                            # Normalize to 0-255
                             dmin = np.nanmin(data)
                             dmax = np.nanmax(data)
                             if dmax > dmin:
-                                data = ((data - dmin) / (dmax - dmin) * 255).astype(np.uint8)
+                                data = ((data - dmin) / (dmax - dmin) * 255).astype(
+                                    np.uint8
+                                )
                             else:
                                 data = np.zeros_like(data, dtype=np.uint8)
 
                         if band_count == 1:
-                            # Grayscale → RGB
-                            arr = np.stack([data[0], data[0], data[0]], axis=-1)
+                            patch = np.stack([data[0], data[0], data[0]], axis=-1)
                         elif band_count == 3:
-                            arr = np.moveaxis(data, 0, -1)  # (3, H, W) → (H, W, 3)
+                            patch = np.moveaxis(data, 0, -1)
                         else:
-                            arr = np.moveaxis(data[:3], 0, -1)
+                            patch = np.moveaxis(data[:3], 0, -1)
 
-                        img = Image.fromarray(arr, "RGB")
+                        # Paste the proportionally-sized patch onto a transparent
+                        # RGBA 256×256 canvas at the correct offset.
+                        canvas = np.zeros((tile_size, tile_size, 4), dtype=np.uint8)
+                        canvas[
+                            out_row_off : out_row_off + out_h,
+                            out_col_off : out_col_off + out_w,
+                            :3,
+                        ] = patch
+                        canvas[
+                            out_row_off : out_row_off + out_h,
+                            out_col_off : out_col_off + out_w,
+                            3,
+                        ] = 255
+                        img = Image.fromarray(canvas, "RGBA")
 
                     tile_path = col_dir / f"{ty}.png"
                     img.save(str(tile_path), "PNG")
