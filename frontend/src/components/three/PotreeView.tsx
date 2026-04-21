@@ -329,6 +329,7 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
     const octree = octreeRef.current;
     if (!octree) return;
 
+    console.log("[PotreeView] color mode →", colorMode);
     switch (colorMode) {
       case "rgb":
         octree.material.pointColorType = PointColorType.RGB;
@@ -338,13 +339,19 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         if (boundsRef.current) {
           octree.material.heightMin = boundsRef.current.min[2];
           octree.material.heightMax = boundsRef.current.max[2];
+          console.log(
+            "[PotreeView] elevation range:",
+            boundsRef.current.min[2], "→", boundsRef.current.max[2],
+          );
         }
         break;
       case "heap":
-        // Heap mode: show RGB but with highlighted overlays
         octree.material.pointColorType = PointColorType.RGB;
         break;
     }
+    // Force shader recompile — setting pointColorType alone is not always
+    // enough to trigger the #define refresh in potree-core.
+    octree.material.needsUpdate = true;
   }, [colorMode]);
 
   // ——— 5. Base plane ———
@@ -411,36 +418,58 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
       }
       shape.closePath();
 
-      const depth = Math.max(heap.maxHeight, 0.5);
-      const geom = new THREE.ExtrudeGeometry(shape, {
-        depth,
-        bevelEnabled: false,
-      });
-
       const color = getHeapColor(heap, idx);
       const isSelected = selectedHeapId === heap.id;
-      const mat = new THREE.MeshBasicMaterial({
+
+      // Flat footprint at the base elevation — no extrusion, so the point
+      // cloud morphology on top stays fully visible. A solid prism hid the
+      // actual shape of the pile with a flat top at maxHeight, which is
+      // misleading (the operator wants to see where the heap is on the
+      // ground, not a virtual volume that hides the pile's peaks/valleys).
+      const footprintGeom = new THREE.ShapeGeometry(shape);
+      const footprintMat = new THREE.MeshBasicMaterial({
         color,
         transparent: true,
-        opacity: isSelected ? 0.5 : 0.25,
+        opacity: isSelected ? 0.35 : 0.18,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
+      const footprint = new THREE.Mesh(footprintGeom, footprintMat);
+      footprint.position.z = heap.baseElevation + 0.02; // avoid z-fighting with base plane
+      footprint.userData = { heapId: heap.id };
+      group.add(footprint);
 
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.z = heap.baseElevation;
-      mesh.userData = { heapId: heap.id };
+      // Colored outline at the base (thicker when selected).
+      const outlinePoints: THREE.Vector3[] = ring.map(
+        ([x, y]) => new THREE.Vector3(x, y, heap.baseElevation + 0.03),
+      );
+      const outlineGeom = new THREE.BufferGeometry().setFromPoints(outlinePoints);
+      const outlineMat = new THREE.LineBasicMaterial({
+        color: isSelected ? 0xffffff : color,
+        linewidth: isSelected ? 2 : 1,
+      });
+      const outline = new THREE.Line(outlineGeom, outlineMat);
+      outline.userData = { heapId: heap.id };
+      group.add(outline);
 
-      group.add(mesh);
-
-      // Wireframe for selected
-      if (isSelected) {
-        const wireGeom = new THREE.EdgesGeometry(geom);
-        const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
-        const wire = new THREE.LineSegments(wireGeom, wireMat);
-        wire.position.z = heap.baseElevation;
-        wire.userData = { heapId: heap.id };
-        group.add(wire);
+      // Optional: dashed outline at the maxHeight level to indicate pile
+      // height bracket, still without hiding the point cloud.
+      if (isSelected && heap.maxHeight > 0.5) {
+        const topPoints: THREE.Vector3[] = ring.map(
+          ([x, y]) => new THREE.Vector3(
+            x, y, heap.baseElevation + heap.maxHeight,
+          ),
+        );
+        const topGeom = new THREE.BufferGeometry().setFromPoints(topPoints);
+        const topMat = new THREE.LineDashedMaterial({
+          color: 0xffffff,
+          dashSize: 1.5,
+          gapSize: 1.0,
+        });
+        const topLine = new THREE.Line(topGeom, topMat);
+        topLine.computeLineDistances();
+        topLine.userData = { heapId: heap.id };
+        group.add(topLine);
       }
     });
 
