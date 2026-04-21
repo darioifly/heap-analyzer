@@ -126,18 +126,24 @@ export function MapView({ surveyId }: MapViewProps) {
         wrapX: false,
       });
 
-      // Zoom/pan constraints intentionally loose:
-      // - no `extent` on View — panning outside the ortho bounds just shows
-      //   the black background; previously the view bounced back to center,
-      //   preventing the operator from inspecting anything near the edges.
-      // - minResolution allows zooming IN up to 4× past the finest tile so
-      //   pixels are readable when inspecting small heaps.
-      // - maxResolution allows zooming OUT up to 8× past the whole-ortho
-      //   level for context; before, the user hit a hard stop when the
-      //   whole site already fit the viewport.
-      const finestRes =
-        metadata.resolutions[metadata.resolutions.length - 1];
+      // Zoom/pan configuration:
+      // - no `extent` on View — free panning; outside the ortho bounds the
+      //   operator sees the black background but the view no longer bounces
+      //   back to center.
+      // - `resolutions` array SNAPS zoom to the tile-grid levels (plus a few
+      //   extra coarse levels for context). Without this, OL zooms to
+      //   arbitrary intermediate resolutions and the tile layer gets scaled
+      //   by OL while the vector polygons render at the exact view resolution
+      //   — result: polygons appeared to drift off their heaps between
+      //   consecutive tile zooms (e.g. between the 20 m and 5 m scale-line
+      //   levels).
       const coarsestRes = metadata.resolutions[0];
+      const viewResolutions = [
+        coarsestRes * 8,
+        coarsestRes * 4,
+        coarsestRes * 2,
+        ...metadata.resolutions,
+      ];
       const map = new OlMap({
         target: mapDivRef.current!,
         layers: [new TileLayer({ source: tileSource })],
@@ -147,9 +153,9 @@ export function MapView({ surveyId }: MapViewProps) {
             (extent[0] + extent[2]) / 2,
             (extent[1] + extent[3]) / 2,
           ],
+          resolutions: viewResolutions,
           resolution: coarsestRes,
-          minResolution: finestRes / 4,
-          maxResolution: coarsestRes * 8,
+          constrainResolution: true,
         }),
         controls: defaultControls().extend([
           new ScaleLine({ units: "metric" }),
