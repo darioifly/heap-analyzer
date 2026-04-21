@@ -129,6 +129,7 @@ export function setupEditingHandlers(db: DatabaseService): void {
         bbox_max_n: fields.bbox_max_n ?? null,
         material_category: null,
         material_confidence: null,
+        vlm_reasoning: null,
         is_manually_confirmed: 1,
         is_excluded: 0,
       });
@@ -244,6 +245,7 @@ export function setupEditingHandlers(db: DatabaseService): void {
             bbox_max_n: fields.bbox_max_n ?? null,
             material_category: heap.material_category,
             material_confidence: null,
+            vlm_reasoning: null,
             is_manually_confirmed: 1,
             is_excluded: 0,
           });
@@ -320,6 +322,7 @@ export function setupEditingHandlers(db: DatabaseService): void {
           bbox_max_n: fields.bbox_max_n ?? null,
           material_category: heaps[0].material_category,
           material_confidence: null,
+          vlm_reasoning: null,
           is_manually_confirmed: 1,
           is_excluded: 0,
         });
