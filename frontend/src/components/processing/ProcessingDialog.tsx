@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Play, Info } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Play, Info, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -29,6 +30,8 @@ import { ProcessingProgress } from "./ProcessingProgress";
 import { useProcessingStore } from "@/stores/processingStore";
 import { useSurveyStore } from "@/stores/surveyStore";
 import { useHeapStore } from "@/stores/heapStore";
+import { useProjectStore } from "@/stores/projectStore";
+import { useVlmStore } from "@/stores/vlmStore";
 
 interface ProcessingDialogProps {
   surveyId: number | null;
@@ -62,12 +65,47 @@ export function ProcessingDialog({
   const [baseMode, setBaseMode] = useState<"auto" | "manual_percentile" | "manual_elevation">("auto");
   const [basePercentile, setBasePercentile] = useState(5);
   const [manualElevation, setManualElevation] = useState(0);
+  const [vlmEnabled, setVlmEnabled] = useState(true);
+  const [vlmModel, setVlmModel] = useState<string | null>(null);
 
   const processingStore = useProcessingStore();
   const surveyStore = useSurveyStore();
   const heapStore = useHeapStore();
+  const projectStore = useProjectStore();
+  const vlmStore = useVlmStore();
 
   const survey = surveyStore.surveys.find((s) => s.id === surveyId);
+  const project = projectStore.projects.find((p) => p.id === survey?.projectId);
+  const projectCategories = project?.materialCategories ?? [];
+
+  const downloadedModels = useMemo(
+    () => vlmStore.models.filter((m) => m.is_downloaded),
+    [vlmStore.models],
+  );
+  const cudaOk = vlmStore.gpuStatus?.cuda_available === true;
+  const vlmReady = cudaOk && downloadedModels.length > 0;
+
+  useEffect(() => {
+    if (open) {
+      void vlmStore.refreshGpuStatus();
+      void vlmStore.refreshModels();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Keep vlmModel in sync with the downloaded list: if nothing selected, pick
+  // the first; if the current selection is no longer downloaded (stale state),
+  // replace it with the first available model.
+  useEffect(() => {
+    if (downloadedModels.length === 0) {
+      if (vlmModel !== null) setVlmModel(null);
+      return;
+    }
+    const stillAvailable = downloadedModels.some((m) => m.name === vlmModel);
+    if (!stillAvailable) {
+      setVlmModel(downloadedModels[0].name);
+    }
+  }, [downloadedModels, vlmModel]);
 
   const handleStart = async (useAdvanced: boolean) => {
     if (!survey || !surveyId) return;
@@ -86,7 +124,33 @@ export function ProcessingDialog({
           ...(baseMode === "manual_elevation" ? { manual_base_elevation: manualElevation } : {}),
         }
       : {};
-    const merged: Record<string, unknown> = { ...surveyParams, ...advancedParams };
+
+    const runVlm = vlmEnabled && vlmReady && vlmModel !== null;
+    let vlmModelsDir: string | null = null;
+    if (runVlm) {
+      try {
+        vlmModelsDir = await window.api.vlm.getModelsDir();
+      } catch (err) {
+        console.warn("Cannot resolve vlm models dir:", err);
+      }
+    }
+    const vlmParams: Record<string, unknown> = runVlm
+      ? {
+          vlm_validation_enabled: true,
+          vlm_model_name: vlmModel,
+          material_categories: projectCategories,
+          ...(vlmModelsDir ? { vlm_models_dir: vlmModelsDir } : {}),
+        }
+      : {};
+    if (vlmEnabled && !vlmReady) {
+      toast.warning(
+        cudaOk
+          ? "Nessun modello VLM scaricato — validazione saltata"
+          : "CUDA non disponibile — validazione VLM saltata",
+      );
+    }
+
+    const merged: Record<string, unknown> = { ...surveyParams, ...advancedParams, ...vlmParams };
     const config: Record<string, unknown> | null =
       Object.keys(merged).length > 0 ? merged : null;
 
@@ -118,17 +182,21 @@ export function ProcessingDialog({
 
       const result = await window.api.python.execute("process", args);
       const data = result.data as {
-        heap_metrics?: Record<string, unknown>[];
+        heap_metrics?: Array<Record<string, unknown> & { vlm_is_heap?: boolean | null }>;
         intermediate_files?: Record<string, string>;
         dsm_path?: string;
         dtm_path?: string;
         ndsm_path?: string;
         label_map_path?: string;
+        base_elevation?: number;
       };
 
       const ifiles = data.intermediate_files ?? {};
 
-      // Update survey paths
+      // Update survey paths — including the survey-level base_elevation
+      // so the 3D elevation gradient can key off it (without this,
+      // pointZRangeRef falls back to the cloud's absolute Z min and the
+      // whole cloud turns purple because ground dominates the range).
       await surveyStore.update(surveyId, {
         processingStatus: "completed",
         dsmPath: ifiles.dsm ?? (data.dsm_path as string) ?? null,
@@ -137,6 +205,7 @@ export function ProcessingDialog({
         labelMapPath: ifiles.label_map ?? (data.label_map_path as string) ?? null,
         tilesPath: ifiles.tiles ?? null,
         ndsmHeatmapPath: ifiles.ndsm_heatmap ?? null,
+        baseElevation: typeof data.base_elevation === "number" ? data.base_elevation : null,
       });
 
       // Bulk create heaps
@@ -158,11 +227,27 @@ export function ProcessingDialog({
             bboxMinN: m.bbox_min_n as number,
             bboxMaxE: m.bbox_max_e as number,
             bboxMaxN: m.bbox_max_n as number,
-            materialCategory: null,
-            materialConfidence: null,
+            materialCategory: (m.material_category as string) ?? null,
+            materialConfidence: (m.material_confidence as number) ?? null,
+            vlmReasoning: (m.vlm_reasoning as string) ?? null,
             isManuallyConfirmed: false,
-            isExcluded: false,
+            isExcluded: m.vlm_is_heap === false,
           })),
+        );
+      }
+
+      // Count VLM false positives + detect "silent skip" (VLM was requested
+      // but no heap came back with a VLM verdict — means Phase 7 bailed out,
+      // e.g. model not downloaded; Python emits a warning we already show).
+      const vlmFalsePositives = (data.heap_metrics ?? []).filter(
+        (m) => m.vlm_is_heap === false,
+      ).length;
+      const vlmRanAnyVerdict = (data.heap_metrics ?? []).some(
+        (m) => m.vlm_is_heap === true || m.vlm_is_heap === false,
+      );
+      if (runVlm && !vlmRanAnyVerdict) {
+        toast.warning(
+          "Validazione VLM richiesta ma non eseguita — vedi warning per il motivo.",
         );
       }
 
@@ -181,8 +266,12 @@ export function ProcessingDialog({
         0,
       );
 
+      const vlmSuffix = vlmFalsePositives > 0
+        ? ` VLM ha escluso ${vlmFalsePositives} falsi positivi.`
+        : "";
       toast.success(
-        `Elaborazione completata: ${heapCount} cumuli trovati. Volume totale: ${totalVolume.toFixed(0)} m\u00B3.`,
+        `Elaborazione completata: ${heapCount} cumuli trovati. ` +
+          `Volume totale: ${totalVolume.toFixed(0)} m\u00B3.${vlmSuffix}`,
       );
 
       // Show warnings
@@ -239,6 +328,15 @@ export function ProcessingDialog({
                 Verranno utilizzati i parametri standard ottimizzati per cumuli
                 siderurgici.
               </p>
+              <VlmValidationBlock
+                enabled={vlmEnabled}
+                setEnabled={setVlmEnabled}
+                model={vlmModel}
+                setModel={setVlmModel}
+                downloadedModels={downloadedModels}
+                cudaOk={cudaOk}
+                categories={projectCategories}
+              />
               <Button onClick={() => handleStart(false)} className="w-full">
                 <Play size={16} className="mr-2" strokeWidth={1.75} />
                 Avvia elaborazione
@@ -359,6 +457,16 @@ export function ProcessingDialog({
                 )}
               </div>
 
+              <VlmValidationBlock
+                enabled={vlmEnabled}
+                setEnabled={setVlmEnabled}
+                model={vlmModel}
+                setModel={setVlmModel}
+                downloadedModels={downloadedModels}
+                cudaOk={cudaOk}
+                categories={projectCategories}
+              />
+
               <Button onClick={() => handleStart(true)} className="w-full">
                 <Play size={16} className="mr-2" strokeWidth={1.75} />
                 Avvia elaborazione
@@ -368,5 +476,81 @@ export function ProcessingDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface VlmValidationBlockProps {
+  enabled: boolean;
+  setEnabled: (v: boolean) => void;
+  model: string | null;
+  setModel: (v: string) => void;
+  downloadedModels: { name: string; display_name: string }[];
+  cudaOk: boolean;
+  categories: string[];
+}
+
+function VlmValidationBlock({
+  enabled,
+  setEnabled,
+  model,
+  setModel,
+  downloadedModels,
+  cudaOk,
+  categories,
+}: VlmValidationBlockProps) {
+  const disabledReason = !cudaOk
+    ? "CUDA non disponibile su questa macchina"
+    : downloadedModels.length === 0
+      ? "Nessun modello VLM scaricato — apri Impostazioni → VLM"
+      : null;
+
+  return (
+    <div className="rounded-md border border-border bg-muted/40 p-3 space-y-3">
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="vlm-validate"
+          checked={enabled}
+          onCheckedChange={(c) => setEnabled(c === true)}
+          disabled={disabledReason !== null}
+          className="mt-0.5"
+        />
+        <div className="flex-1 space-y-1">
+          <Label htmlFor="vlm-validate" className="cursor-pointer flex items-center gap-1.5">
+            <Sparkles size={14} strokeWidth={1.75} className="text-primary" />
+            Verifica cumuli con VLM e classifica materiale
+            <InfoTip text="Il VLM scarta i falsi positivi (macchinari, binari, tetti) e assegna una categoria materiale a ogni cumulo. Richiede GPU CUDA e un modello VLM scaricato." />
+          </Label>
+          {disabledReason ? (
+            <p className="text-xs text-muted-foreground">{disabledReason}</p>
+          ) : categories.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Classificazione in forma libera: il VLM descrive il materiale con 2-5 parole.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Validazione + classificazione su {categories.length} categorie del progetto.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {enabled && disabledReason === null && (
+        <div className="pl-6 space-y-1.5">
+          <Label className="text-xs">Modello VLM</Label>
+          <Select value={model ?? undefined} onValueChange={setModel}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Seleziona modello..." />
+            </SelectTrigger>
+            <SelectContent>
+              {downloadedModels.map((m) => (
+                <SelectItem key={m.name} value={m.name}>
+                  {m.display_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>
   );
 }
