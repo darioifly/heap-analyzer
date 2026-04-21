@@ -285,21 +285,19 @@ def export_for_potree(
     with open(metadata_path, encoding="utf-8") as f:
         metadata = json.load(f)
 
-    # potree-core (the npm loader used by the frontend) only handles 8-bit
-    # RGB — it decodes the color buffer as Uint8Array. PotreeConverter 2.x
-    # emits 16-bit RGB whenever the source LAS has 16-bit RGB (the default
-    # for LAS 1.2+, including DJI Terra), so without this post-processing
-    # the cloud renders fully white in the 3D viewer. Downcast uint16 ->
-    # uint8 by keeping the high byte of each channel, then patch the byte
-    # offsets in hierarchy.bin and update metadata.json.
-    try:
-        if progress_callback:
-            progress_callback(99, "Conversione RGB uint16->uint8...")
-        _downcast_rgb_uint16_to_uint8(metadata_path.parent)
-        with open(metadata_path, encoding="utf-8") as f:
-            metadata = json.load(f)
-    except Exception as exc:  # noqa: BLE001
-        _log.warning("RGB downcast failed (continuing): %s", exc)
+    # NOTE: an earlier version of this module called
+    # `_downcast_rgb_uint16_to_uint8` here under the (wrong) assumption
+    # that potree-core only supports 8-bit RGB. Reading the unminified
+    # sources showed that potree-core has a hard-coded 16-bit RGB path
+    # in its OctreeLoader worker:
+    #     r = view.getUint16(e+l+0, true);
+    #     ...
+    #     n[4*t+0] = r > 255 ? r/256 : r;
+    # So 6-byte uint16 RGB is the expected input and gets normalized to
+    # uint8 inside the worker. Downcasting corrupted the stride and
+    # triggered "DataView out of bounds" + 416 Range errors. We keep the
+    # helper in the module for reference / eventual use with viewers
+    # that truly only handle 8-bit RGB, but do NOT call it here.
 
     # Extract info from metadata
     num_points = metadata.get("points", 0)
