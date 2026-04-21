@@ -72,18 +72,18 @@ export class TileServer {
         'Content-Length, Content-Range, Accept-Ranges',
       );
       // Cache strategy:
-      // - /potree/* chunks are immutable binary blobs produced by
-      //   PotreeConverter; aggressive caching is fine and Chrome's
-      //   partial-content cache path requires a positive max-age
-      //   (no-cache + Range => ERR_CACHE_OPERATION_NOT_SUPPORTED).
-      // - /tiles/* PNG pyramids change when tiles are regenerated (e.g.
-      //   after fixing the proportional-paste bug) so we force
-      //   revalidation there.
-      if (req.path.startsWith('/potree/')) {
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-      } else {
-        res.setHeader('Cache-Control', 'no-cache');
-      }
+      // - `no-store` bypasses the cache entirely. We pick this over
+      //   `no-cache` because Chrome's partial-content path refuses to
+      //   mix Range requests with `no-cache` (ERR_CACHE_OPERATION_NOT_
+      //   SUPPORTED) AND because Potree payloads are rewritten in
+      //   place by the RGB downcast post-processing — a positive
+      //   max-age served a stale octree.bin / hierarchy.bin against a
+      //   fresh metadata.json, causing "DataView out of bounds" /
+      //   416 Range Not Satisfiable once stride sizes diverged.
+      // - For production packaging we'd switch this to ETag-based
+      //   revalidation; for now the Electron dev loop needs freshness
+      //   more than bandwidth.
+      res.setHeader('Cache-Control', 'no-store');
       if (req.method === 'OPTIONS') {
         res.status(204).end();
         return;
