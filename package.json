@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:electron\"",
     "dev:frontend": "npm run dev --workspace=frontend",
-    "dev:electron": "wait-on http://localhost:5173 && npm run start --workspace=electron",
+    "dev:electron": "wait-on http://localhost:5173 && npm run build --workspace=electron && npm run start --workspace=electron",
     "build": "npm run build:frontend && npm run build:electron",
     "build:frontend": "npm run build --workspace=frontend",
     "build:electron": "npm run build --workspace=electron",
