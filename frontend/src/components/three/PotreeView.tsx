@@ -206,9 +206,42 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         const metadataUrl = `${baseUrl}/potree/${surveyId}/metadata.json`;
         const potreeBaseUrl = `${baseUrl}/potree/${surveyId}/`;
 
+        // Diagnostic: verify metadata.json is reachable before handing off to
+        // potree-core. Without this, a silent fallback (e.g. Vite dev server
+        // returning index.html for an unknown path) surfaces as an opaque
+        // 'Unexpected token <' JSON parse error from inside potree-core.
+        console.log("[PotreeView] baseUrl =", baseUrl);
+        console.log("[PotreeView] metadataUrl =", metadataUrl);
+        try {
+          const probe = await fetch(metadataUrl, { method: "GET" });
+          const contentType = probe.headers.get("content-type") ?? "";
+          if (!probe.ok) {
+            throw new Error(
+              `metadata.json HTTP ${probe.status} at ${metadataUrl}`,
+            );
+          }
+          if (!contentType.includes("json") && !contentType.includes("text")) {
+            // application/json or application/octet-stream; both readable as JSON.
+          }
+          const text = await probe.text();
+          if (!text.trim().startsWith("{")) {
+            throw new Error(
+              `metadata.json returned non-JSON content (first 80 chars: ${text.slice(0, 80).replace(/\s+/g, " ")}) — baseUrl=${baseUrl}`,
+            );
+          }
+        } catch (probeErr) {
+          throw new Error(
+            probeErr instanceof Error ? probeErr.message : String(probeErr),
+          );
+        }
+
         if (cancelled) return;
 
-        const octree = await potree.loadPointCloud(metadataUrl, potreeBaseUrl);
+        // potree-core concatenates these as `baseUrl + fileName`, NOT using
+        // the first arg as an absolute URL. Passing `metadataUrl` (absolute)
+        // as the first arg caused doubled-URL 404s like
+        //   GET .../potree/12/http://127.0.0.1:3001/potree/12/metadata.json
+        const octree = await potree.loadPointCloud("metadata.json", potreeBaseUrl);
 
         if (cancelled) {
           octree.dispose();
