@@ -254,16 +254,44 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
         octree.material.shape = PointShape.CIRCLE;
         octree.material.pointColorType = PointColorType.RGB;
 
+        // Shift the octree so its center sits at the world origin. The LAS
+        // is in UTM (~351 000, 5 120 000, 210) which makes OrbitControls
+        // targets, damping math, and the directional light all misbehave in
+        // a way that leaves the cloud invisible. By moving the Object3D's
+        // position, three.js still renders the points at their absolute
+        // location (internal vertex data is unchanged), but the camera /
+        // controls / lights operate in a nice small local frame.
+        const bbAbs = octree.boundingBox;
+        const originShift = new THREE.Vector3(
+          (bbAbs.min.x + bbAbs.max.x) / 2,
+          (bbAbs.min.y + bbAbs.max.y) / 2,
+          (bbAbs.min.z + bbAbs.max.z) / 2,
+        );
+        console.log("[PotreeView] octree bbox min:", bbAbs.min, "max:", bbAbs.max);
+        console.log("[PotreeView] origin shift:", originShift);
+        octree.position.sub(originShift);
+        octree.updateMatrixWorld(true);
+
         scene.add(octree);
         octreeRef.current = octree;
 
-        // Extract bounds
-        const bb = octree.boundingBox;
+        // Local-space bounds after the shift (for camera presets / heap overlay).
         const bounds: BoundingBox3D = {
-          min: [bb.min.x, bb.min.y, bb.min.z],
-          max: [bb.max.x, bb.max.y, bb.max.z],
+          min: [
+            bbAbs.min.x - originShift.x,
+            bbAbs.min.y - originShift.y,
+            bbAbs.min.z - originShift.z,
+          ],
+          max: [
+            bbAbs.max.x - originShift.x,
+            bbAbs.max.y - originShift.y,
+            bbAbs.max.z - originShift.z,
+          ],
         };
         boundsRef.current = bounds;
+        // Stash the shift so heap/section overlays can subtract it to land
+        // on the same local frame as the cloud.
+        (window as unknown as { __potreeOffset?: THREE.Vector3 }).__potreeOffset = originShift;
 
         // Default camera position
         applyCameraPreset("orbit", camera, controls, bounds);
