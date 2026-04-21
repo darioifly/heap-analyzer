@@ -62,23 +62,28 @@ export class TileServer {
   private setupMiddleware(): void {
     this.app.use((req: Request, res: Response, next) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
-      // potree-core issues Range-requests for octree/hierarchy chunks with
-      // a custom Content-Type; that promotes the request to a CORS-
-      // "non-simple" fetch, which needs a preflight OPTIONS to succeed
-      // before the GET is sent. Without these two headers (and an OPTIONS
-      // short-circuit below) the browser blocks the GET with
-      //   "Response to preflight request doesn't pass access control check"
-      // and the 3D viewer never loads hierarchy.bin.
       res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
       res.setHeader(
         'Access-Control-Allow-Headers',
         'Content-Type, Range, Accept, Origin',
       );
-      res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
-      // no-cache forces the browser/OL to revalidate before serving from
-      // cache. Without this, regenerating tile pyramids is invisible to
-      // the operator because the 24h max-age tiles remain cached.
-      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader(
+        'Access-Control-Expose-Headers',
+        'Content-Length, Content-Range, Accept-Ranges',
+      );
+      // Cache strategy:
+      // - /potree/* chunks are immutable binary blobs produced by
+      //   PotreeConverter; aggressive caching is fine and Chrome's
+      //   partial-content cache path requires a positive max-age
+      //   (no-cache + Range => ERR_CACHE_OPERATION_NOT_SUPPORTED).
+      // - /tiles/* PNG pyramids change when tiles are regenerated (e.g.
+      //   after fixing the proportional-paste bug) so we force
+      //   revalidation there.
+      if (req.path.startsWith('/potree/')) {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+      } else {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
       if (req.method === 'OPTIONS') {
         res.status(204).end();
         return;

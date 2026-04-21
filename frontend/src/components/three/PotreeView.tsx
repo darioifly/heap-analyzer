@@ -334,17 +334,27 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
       case "rgb":
         octree.material.pointColorType = PointColorType.RGB;
         break;
-      case "elevation":
+      case "elevation": {
         octree.material.pointColorType = PointColorType.HEIGHT;
-        if (boundsRef.current) {
-          octree.material.heightMin = boundsRef.current.min[2];
-          octree.material.heightMax = boundsRef.current.max[2];
-          console.log(
-            "[PotreeView] elevation range:",
-            boundsRef.current.min[2], "→", boundsRef.current.max[2],
-          );
-        }
+        // Use the TIGHT bbox (actual min/max of real points) rather than the
+        // cubic AABB which PotreeConverter pads to a 328 m cube for octree
+        // indexing. With the cubic AABB, Z spans 208-536 m but the real
+        // points are at 208-238 m — the gradient gets compressed into the
+        // bottom 9% of the ramp and the whole cloud looks one colour.
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const tight = (octree as unknown as { pcoGeometry?: { tightBoundingBox?: THREE.Box3 } })
+          .pcoGeometry?.tightBoundingBox;
+        /* eslint-enable @typescript-eslint/no-explicit-any */
+        const zMin = tight?.min.z ?? boundsRef.current?.min[2] ?? 0;
+        const zMax = tight?.max.z ?? boundsRef.current?.max[2] ?? 100;
+        octree.material.heightMin = zMin;
+        octree.material.heightMax = zMax;
+        console.log(
+          "[PotreeView] elevation range (tight):",
+          zMin, "→", zMax,
+        );
         break;
+      }
       case "heap":
         octree.material.pointColorType = PointColorType.RGB;
         break;
@@ -420,57 +430,42 @@ export function PotreeView({ surveyId }: PotreeViewProps) {
 
       const color = getHeapColor(heap, idx);
       const isSelected = selectedHeapId === heap.id;
+      const depth = Math.max(heap.maxHeight, 0.5);
 
-      // Flat footprint at the base elevation — no extrusion, so the point
-      // cloud morphology on top stays fully visible. A solid prism hid the
-      // actual shape of the pile with a flat top at maxHeight, which is
-      // misleading (the operator wants to see where the heap is on the
-      // ground, not a virtual volume that hides the pile's peaks/valleys).
-      const footprintGeom = new THREE.ShapeGeometry(shape);
-      const footprintMat = new THREE.MeshBasicMaterial({
+      // Low-opacity prism so operators see both the heap envelope AND the
+      // point-cloud morphology through it. Keeping the solid extrusion is
+      // important — without it the 3D view is hard to read — but the fill
+      // is kept faint (8%) so peaks poke out clearly. Depth-write is off
+      // so the cloud always draws on top.
+      const geom = new THREE.ExtrudeGeometry(shape, {
+        depth,
+        bevelEnabled: false,
+      });
+      const mat = new THREE.MeshBasicMaterial({
         color,
         transparent: true,
-        opacity: isSelected ? 0.35 : 0.18,
+        opacity: isSelected ? 0.22 : 0.08,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
-      const footprint = new THREE.Mesh(footprintGeom, footprintMat);
-      footprint.position.z = heap.baseElevation + 0.02; // avoid z-fighting with base plane
-      footprint.userData = { heapId: heap.id };
-      group.add(footprint);
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.z = heap.baseElevation;
+      mesh.userData = { heapId: heap.id };
+      group.add(mesh);
 
-      // Colored outline at the base (thicker when selected).
-      const outlinePoints: THREE.Vector3[] = ring.map(
-        ([x, y]) => new THREE.Vector3(x, y, heap.baseElevation + 0.03),
-      );
-      const outlineGeom = new THREE.BufferGeometry().setFromPoints(outlinePoints);
-      const outlineMat = new THREE.LineBasicMaterial({
+      // Cage wireframe (edges only — no filled triangles) so the heap's
+      // boundary is always readable even when the fill fades into the
+      // cloud. Selected heap gets a brighter, thicker cage.
+      const edgeGeom = new THREE.EdgesGeometry(geom);
+      const edgeMat = new THREE.LineBasicMaterial({
         color: isSelected ? 0xffffff : color,
-        linewidth: isSelected ? 2 : 1,
+        transparent: !isSelected,
+        opacity: isSelected ? 1 : 0.7,
       });
-      const outline = new THREE.Line(outlineGeom, outlineMat);
-      outline.userData = { heapId: heap.id };
-      group.add(outline);
-
-      // Optional: dashed outline at the maxHeight level to indicate pile
-      // height bracket, still without hiding the point cloud.
-      if (isSelected && heap.maxHeight > 0.5) {
-        const topPoints: THREE.Vector3[] = ring.map(
-          ([x, y]) => new THREE.Vector3(
-            x, y, heap.baseElevation + heap.maxHeight,
-          ),
-        );
-        const topGeom = new THREE.BufferGeometry().setFromPoints(topPoints);
-        const topMat = new THREE.LineDashedMaterial({
-          color: 0xffffff,
-          dashSize: 1.5,
-          gapSize: 1.0,
-        });
-        const topLine = new THREE.Line(topGeom, topMat);
-        topLine.computeLineDistances();
-        topLine.userData = { heapId: heap.id };
-        group.add(topLine);
-      }
+      const edges = new THREE.LineSegments(edgeGeom, edgeMat);
+      edges.position.z = heap.baseElevation;
+      edges.userData = { heapId: heap.id };
+      group.add(edges);
     });
 
     scene.add(group);
