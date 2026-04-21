@@ -88,8 +88,14 @@ def generate_tiles(
 
         for z in range(min_zoom, max_zoom + 1):
             n_tiles = 2 ** z
-            tile_extent_x = extent_w / n_tiles
-            tile_extent_y = extent_h / n_tiles
+            # Tiles are SQUARE in geographic space so that res × tile_size
+            # maps back to the declared resolution. For non-square rasters the
+            # tiles outside the actual extent are simply transparent. Using
+            # separate tile_extent_x / tile_extent_y (as before) would stretch
+            # the ortho, misaligning any overlay — e.g. a 321×239 m Acciaieria
+            # ortho showed polygons shifted ~10 m north because the y-axis was
+            # compressed by 239/321 = 0.74.
+            tile_extent = max_extent / n_tiles
 
             zoom_dir = output_dir / str(z)
             zoom_dir.mkdir(exist_ok=True)
@@ -99,11 +105,11 @@ def generate_tiles(
                 col_dir.mkdir(exist_ok=True)
 
                 for ty in range(n_tiles):
-                    # Geographic bounds of this tile
-                    tile_min_x = bounds[0] + tx * tile_extent_x
-                    tile_max_x = tile_min_x + tile_extent_x
-                    tile_max_y = bounds[3] - ty * tile_extent_y
-                    tile_min_y = tile_max_y - tile_extent_y
+                    # Geographic bounds of this tile (square, tile_extent × tile_extent).
+                    tile_min_x = bounds[0] + tx * tile_extent
+                    tile_max_x = tile_min_x + tile_extent
+                    tile_max_y = bounds[3] - ty * tile_extent
+                    tile_min_y = tile_max_y - tile_extent
 
                     # Convert geographic bounds to pixel coordinates in source raster
                     col_off, row_off = ~src.transform * (tile_min_x, tile_max_y)

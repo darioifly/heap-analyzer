@@ -126,6 +126,18 @@ export function MapView({ surveyId }: MapViewProps) {
         wrapX: false,
       });
 
+      // Zoom/pan constraints intentionally loose:
+      // - no `extent` on View — panning outside the ortho bounds just shows
+      //   the black background; previously the view bounced back to center,
+      //   preventing the operator from inspecting anything near the edges.
+      // - minResolution allows zooming IN up to 4× past the finest tile so
+      //   pixels are readable when inspecting small heaps.
+      // - maxResolution allows zooming OUT up to 8× past the whole-ortho
+      //   level for context; before, the user hit a hard stop when the
+      //   whole site already fit the viewport.
+      const finestRes =
+        metadata.resolutions[metadata.resolutions.length - 1];
+      const coarsestRes = metadata.resolutions[0];
       const map = new OlMap({
         target: mapDivRef.current!,
         layers: [new TileLayer({ source: tileSource })],
@@ -135,11 +147,9 @@ export function MapView({ surveyId }: MapViewProps) {
             (extent[0] + extent[2]) / 2,
             (extent[1] + extent[3]) / 2,
           ],
-          extent,
-          resolution: metadata.resolutions[0],
-          minResolution:
-            metadata.resolutions[metadata.resolutions.length - 1],
-          maxResolution: metadata.resolutions[0],
+          resolution: coarsestRes,
+          minResolution: finestRes / 4,
+          maxResolution: coarsestRes * 8,
         }),
         controls: defaultControls().extend([
           new ScaleLine({ units: "metric" }),
